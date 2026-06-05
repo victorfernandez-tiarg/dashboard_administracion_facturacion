@@ -9,6 +9,12 @@ const fmt = (v: number) => `$ ${v.toLocaleString("es-AR", { maximumFractionDigit
 
 const fmtFecha = (s: string | null) => {
   if (!s) return "-";
+  // Parsear "YYYY-MM-DD" como hora local (no UTC) para evitar desfase de zona horaria
+  const parts = s.match(/^(\d{4})-(\d{2})-(\d{2})/);
+  if (parts) {
+    const d = new Date(parseInt(parts[1]), parseInt(parts[2]) - 1, parseInt(parts[3]));
+    return isNaN(d.getTime()) ? s : d.toLocaleDateString("es-AR");
+  }
   const d = new Date(s);
   return isNaN(d.getTime()) ? s : d.toLocaleDateString("es-AR");
 };

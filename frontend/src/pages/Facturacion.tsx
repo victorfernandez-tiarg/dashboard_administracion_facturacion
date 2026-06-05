@@ -927,9 +927,12 @@ export default function Facturacion() {
                             const importe = isUSD
                               ? fmtUSDShort(parseFloat(f.monto_usd || "0"))
                               : fmtShort(parseFloat(f.monto_total_ars || "0"));
-                            const fechaFmt = f.fecha
-                              ? new Date(f.fecha).toLocaleDateString("es-AR", { day: "2-digit", month: "2-digit", year: "2-digit" })
-                              : "-";
+                            const fechaFmt = (() => {
+                              if (!f.fecha) return "-";
+                              const p = f.fecha.match(/^(\d{4})-(\d{2})-(\d{2})/);
+                              if (p) return new Date(parseInt(p[1]), parseInt(p[2]) - 1, parseInt(p[3])).toLocaleDateString("es-AR", { day: "2-digit", month: "2-digit", year: "2-digit" });
+                              return new Date(f.fecha).toLocaleDateString("es-AR", { day: "2-digit", month: "2-digit", year: "2-digit" });
+                            })();
                             return (
                               <tr key={idx} className={`${isNC ? "bg-amber-50/40" : ""}`}>
                                 <td className="py-1.5 pr-3">
