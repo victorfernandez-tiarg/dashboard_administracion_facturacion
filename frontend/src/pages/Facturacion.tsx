@@ -248,15 +248,24 @@ export default function Facturacion() {
   const empresas = ["TIARG S.A.", "TIARG LLC"];
   const meses = Array.from(new Set(mensual.map((r) => r.mes))).sort();
 
+  // Normaliza empresa de BD a una de las dos empresas conocidas
+  const normalizaEmpresa = (emp: string): string => {
+    if (emp.toUpperCase().includes("LLC")) return "TIARG LLC";
+    return "TIARG S.A.";
+  };
+
   const chartDataForEmpresa = (empresa: string) =>
     meses.map((mes) => {
-      const row = (activeMensual as any[]).find((r) => r.mes === mes && r.empresa === empresa);
+      // Agrupa todas las filas del mes cuya empresa normalizada coincida
+      const rows = (activeMensual as any[]).filter(
+        (r) => r.mes === mes && normalizaEmpresa(r.empresa) === empresa
+      );
       return {
         mes,
-        facturado_ars: row ? parseFloat(row.facturado_ars || "0") : 0,
-        facturado_usd: row ? parseFloat(row.facturado_usd || "0") : 0,
-        nc_ars: row ? parseFloat(row.nc_ars || "0") : 0,
-        cantidad_facturas: row ? parseInt(row.cantidad_facturas || "0") : 0,
+        facturado_ars: rows.reduce((s, r) => s + parseFloat(r.facturado_ars || "0"), 0),
+        facturado_usd: rows.reduce((s, r) => s + parseFloat(r.facturado_usd || "0"), 0),
+        nc_ars: rows.reduce((s, r) => s + parseFloat(r.nc_ars || "0"), 0),
+        cantidad_facturas: rows.reduce((s, r) => s + parseInt(r.cantidad_facturas || "0"), 0),
       };
     });
 

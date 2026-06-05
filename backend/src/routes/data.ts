@@ -331,14 +331,14 @@ dataRouter.get("/facturacion-mensual", async (req: AuthRequest, res: Response) =
     const { rows } = await db.query(`
       SELECT
         TO_CHAR(fecha, 'YYYY-MM') as mes,
-        empresa,
+        CASE WHEN empresa ILIKE '%LLC%' THEN 'TIARG LLC' ELSE 'TIARG S.A.' END as empresa,
         SUM(CASE WHEN NOT es_nota_credito THEN monto_total_ars ELSE 0 END) as facturado_ars,
         SUM(CASE WHEN NOT es_nota_credito THEN monto_usd ELSE 0 END) as facturado_usd,
         SUM(CASE WHEN es_nota_credito THEN monto_total_ars ELSE 0 END) as nc_ars,
         COUNT(CASE WHEN NOT es_nota_credito THEN 1 END) as cantidad_facturas
       FROM facturas
       ${where}
-      GROUP BY TO_CHAR(fecha, 'YYYY-MM'), empresa
+      GROUP BY TO_CHAR(fecha, 'YYYY-MM'), CASE WHEN empresa ILIKE '%LLC%' THEN 'TIARG LLC' ELSE 'TIARG S.A.' END
       ORDER BY 1, 2
     `, params);
     res.json(rows);
@@ -355,8 +355,8 @@ dataRouter.get("/facturacion-detalle-mes", async (req: AuthRequest, res: Respons
       return res.status(400).json({ error: "Parámetros requeridos: mes, empresa" });
     }
 
-    const baseParams: any[] = [mes, empresa];
-    let baseWhere = `TO_CHAR(fecha, 'YYYY-MM') = $1 AND empresa = $2`;
+    const baseParams: any[] = [mes, `${empresa}%`];
+    let baseWhere = `TO_CHAR(fecha, 'YYYY-MM') = $1 AND empresa ILIKE $2`;
     if (cc_incluir) {
       const list = cc_incluir.split(",").map((s) => s.trim()).filter(Boolean);
       if (list.length) {
@@ -461,25 +461,26 @@ dataRouter.get("/facturacion-cliente", async (req: AuthRequest, res: Response) =
     const [resumenRes, mensualRes, lineaRes, facturasRes] = await Promise.all([
       db.query(`
         SELECT
-          empresa, razon_social,
+          CASE WHEN empresa ILIKE '%LLC%' THEN 'TIARG LLC' ELSE 'TIARG S.A.' END as empresa,
+          razon_social,
           SUM(CASE WHEN NOT es_nota_credito THEN monto_total_ars ELSE 0 END) as facturado_ars,
           SUM(CASE WHEN NOT es_nota_credito THEN monto_usd ELSE 0 END) as facturado_usd,
           SUM(CASE WHEN es_nota_credito THEN monto_total_ars ELSE 0 END) as nc_ars,
           SUM(importe_pendiente) as pendiente,
           COUNT(CASE WHEN NOT es_nota_credito THEN 1 END) as cantidad_facturas
         FROM facturas WHERE ${where}
-        GROUP BY empresa, razon_social ORDER BY facturado_ars DESC
+        GROUP BY CASE WHEN empresa ILIKE '%LLC%' THEN 'TIARG LLC' ELSE 'TIARG S.A.' END, razon_social ORDER BY facturado_ars DESC
       `, params),
       db.query(`
         SELECT
           TO_CHAR(fecha, 'YYYY-MM') as mes,
-          empresa,
+          CASE WHEN empresa ILIKE '%LLC%' THEN 'TIARG LLC' ELSE 'TIARG S.A.' END as empresa,
           SUM(CASE WHEN NOT es_nota_credito THEN monto_total_ars ELSE 0 END) as facturado_ars,
           SUM(CASE WHEN NOT es_nota_credito THEN monto_usd ELSE 0 END) as facturado_usd,
           SUM(CASE WHEN es_nota_credito THEN monto_total_ars ELSE 0 END) as nc_ars,
           COUNT(CASE WHEN NOT es_nota_credito THEN 1 END) as cantidad_facturas
         FROM facturas WHERE ${where} AND fecha IS NOT NULL
-        GROUP BY TO_CHAR(fecha, 'YYYY-MM'), empresa ORDER BY 1, 2
+        GROUP BY TO_CHAR(fecha, 'YYYY-MM'), CASE WHEN empresa ILIKE '%LLC%' THEN 'TIARG LLC' ELSE 'TIARG S.A.' END ORDER BY 1, 2
       `, params),
       db.query(`
         SELECT
@@ -492,10 +493,21 @@ dataRouter.get("/facturacion-cliente", async (req: AuthRequest, res: Response) =
       `, params),
       db.query(`
         SELECT
-          documento, numero, fecha, linea_negocio, dim_valor, condicion_pago, empresa,
-          monto_total_ars, monto_usd, importe_pendiente, es_nota_credito, moneda_iso
+          COALESCE(NULLIF(numero,''), documento) as numero,
+          documento,
+          MIN(fecha) as fecha,
+          MAX(linea_negocio) as linea_negocio,
+          MAX(dim_valor) as dim_valor,
+          MAX(condicion_pago) as condicion_pago,
+          CASE WHEN MAX(empresa) ILIKE '%LLC%' THEN 'TIARG LLC' ELSE 'TIARG S.A.' END as empresa,
+          SUM(monto_total_ars) as monto_total_ars,
+          SUM(monto_usd) as monto_usd,
+          SUM(importe_pendiente) as importe_pendiente,
+          bool_or(es_nota_credito) as es_nota_credito,
+          MAX(moneda_iso) as moneda_iso
         FROM facturas WHERE ${where}
-        ORDER BY fecha DESC LIMIT 200
+        GROUP BY COALESCE(NULLIF(numero,''), documento), documento
+        ORDER BY MIN(fecha) DESC LIMIT 200
       `, params),
     ]);
 
