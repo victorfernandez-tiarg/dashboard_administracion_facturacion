@@ -10,9 +10,23 @@ const NOTAS_CREDITO = [
 
 function parseDate(val: unknown): Date | null {
   if (!val) return null;
-  if (val instanceof Date) return val;
-  if (typeof val === "number") return XLSX.SSF.parse_date_code(val) ? new Date((val - 25569) * 86400 * 1000) : null;
-  const d = new Date(String(val));
+  if (val instanceof Date) {
+    const d = new Date(Date.UTC(val.getUTCFullYear(), val.getUTCMonth(), val.getUTCDate(), 12, 0, 0));
+    return isNaN(d.getTime()) ? null : d;
+  }
+  if (typeof val === "number") {
+    if (!XLSX.SSF.parse_date_code(val)) return null;
+    const raw = new Date((val - 25569) * 86400 * 1000);
+    const d = new Date(Date.UTC(raw.getUTCFullYear(), raw.getUTCMonth(), raw.getUTCDate(), 12, 0, 0));
+    return isNaN(d.getTime()) ? null : d;
+  }
+  const s = String(val).trim();
+  const ddmmyyyy = s.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
+  if (ddmmyyyy) {
+    const d = new Date(Date.UTC(parseInt(ddmmyyyy[3]), parseInt(ddmmyyyy[2]) - 1, parseInt(ddmmyyyy[1]), 12, 0, 0));
+    return isNaN(d.getTime()) ? null : d;
+  }
+  const d = new Date(s);
   return isNaN(d.getTime()) ? null : d;
 }
 

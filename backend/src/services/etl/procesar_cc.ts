@@ -5,9 +5,27 @@ const AGING_LABELS = ["Al día", "1–30 días", "31–60 días", "61–90 días
 
 function parseDate(val: unknown): Date | null {
   if (!val) return null;
-  if (val instanceof Date) return val;
-  if (typeof val === "number") return new Date((val - 25569) * 86400 * 1000);
-  const d = new Date(String(val));
+  if (val instanceof Date) {
+    // cellDates:true devuelve Date en UTC medianoche — ajustar para evitar desfase de zona horaria
+    const d = new Date(Date.UTC(val.getUTCFullYear(), val.getUTCMonth(), val.getUTCDate(), 12, 0, 0));
+    return isNaN(d.getTime()) ? null : d;
+  }
+  if (typeof val === "number") {
+    // Serial de Excel: días desde 1900-01-00 (con el bug del año bisiesto de Lotus)
+    const ms = (val - 25569) * 86400 * 1000;
+    const raw = new Date(ms);
+    // Reconstruir como mediodía UTC para evitar desfase
+    const d = new Date(Date.UTC(raw.getUTCFullYear(), raw.getUTCMonth(), raw.getUTCDate(), 12, 0, 0));
+    return isNaN(d.getTime()) ? null : d;
+  }
+  const s = String(val).trim();
+  // Formato dd/mm/yyyy (Finnegans)
+  const ddmmyyyy = s.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
+  if (ddmmyyyy) {
+    const d = new Date(Date.UTC(parseInt(ddmmyyyy[3]), parseInt(ddmmyyyy[2]) - 1, parseInt(ddmmyyyy[1]), 12, 0, 0));
+    return isNaN(d.getTime()) ? null : d;
+  }
+  const d = new Date(s);
   return isNaN(d.getTime()) ? null : d;
 }
 
