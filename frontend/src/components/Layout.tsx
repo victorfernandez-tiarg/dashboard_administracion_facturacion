@@ -159,7 +159,7 @@ export default function Layout({ children, user, onLogout, isAdmin }: LayoutProp
         </div>
 
         {/* Zona de carga contextual */}
-        {config && (
+        {config && isAdmin && (
           <div className="px-3 pb-4 border-t border-white/10 pt-3">
             <p className="text-[10px] text-white/35 uppercase tracking-wide font-semibold mb-2">
               Cargar datos

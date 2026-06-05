@@ -350,44 +350,40 @@ dataRouter.get("/facturacion-mensual", async (req: AuthRequest, res: Response) =
 dataRouter.get("/facturacion-detalle-mes", async (req: AuthRequest, res: Response) => {
   try {
     const db = getPool();
-    const { mes, empresa, cc_incluir, cc_excluir, dv_incluir, dv_excluir } = req.query as Record<string, string>;
+    const { mes, empresa } = req.query as Record<string, string>;
     if (!mes || !empresa) {
       return res.status(400).json({ error: "Parámetros requeridos: mes, empresa" });
     }
 
-    const baseParams: any[] = [mes, `${empresa}%`];
-    let baseWhere = `TO_CHAR(fecha, 'YYYY-MM') = $1 AND empresa ILIKE $2`;
-    if (cc_incluir) {
-      const list = cc_incluir.split(",").map((s) => s.trim()).filter(Boolean);
-      if (list.length) {
-        baseWhere += ` AND linea_negocio = ANY($${baseParams.length + 1}::text[])`;
-        baseParams.push(list);
-      }
-    } else if (cc_excluir) {
-      const list = cc_excluir.split(",").map((s) => s.trim()).filter(Boolean);
-      if (list.length) {
-        baseWhere += ` AND (linea_negocio IS NULL OR linea_negocio != ALL($${baseParams.length + 1}::text[]))`;
-        baseParams.push(list);
-      }
+    // Condición de mes y empresa según normalización S.A. / LLC
+    const empresaCondition = empresa === "TIARG LLC"
+      ? `TO_CHAR(fecha, 'YYYY-MM') = $1 AND empresa NOT ILIKE '%S.A.%'`
+      : `TO_CHAR(fecha, 'YYYY-MM') = $1 AND empresa ILIKE $2`;
+    const empresaParams = empresa === "TIARG LLC" ? [mes] : [mes, `${empresa}%`];
+
+    // Usar buildFacturasWhere para aplicar restricciones del usuario + filtros globales
+    const { where: restrictWhere, params: restrictParams } = buildFacturasWhere(
+      req.query as any,
+      [],
+      req.user?.restricciones
+    );
+
+    // Combinar: empresa + restricciones. restrictWhere ya incluye cc/dv/cliente filters.
+    // Necesitamos combinar los params correctamente.
+    const extraConditions = restrictWhere.replace(/^WHERE\s*/i, "").replace(/^\s*$/, "");
+    const allConditions = [empresaCondition];
+    const allParams = [...empresaParams];
+
+    // Agregar condiciones de restricciones (reindexar $N)
+    if (extraConditions) {
+      const offset = allParams.length;
+      const reindexed = extraConditions.replace(/\$(\d+)/g, (_, n) => `$${parseInt(n) + offset}`);
+      allConditions.push(reindexed);
+      allParams.push(...restrictParams);
     }
-    if (dv_incluir) {
-      const list = dv_incluir.split(",").map((s) => s.trim()).filter(Boolean);
-      if (list.length) {
-        baseWhere += ` AND dim_valor = ANY($${baseParams.length + 1}::text[])`;
-        baseParams.push(list);
-      }
-    } else if (dv_excluir) {
-      const list = dv_excluir.split(",").map((s) => s.trim()).filter(Boolean);
-      if (list.length) {
-        baseWhere += ` AND (dim_valor IS NULL OR dim_valor != ALL($${baseParams.length + 1}::text[]))`;
-        baseParams.push(list);
-      }
-    }
-    const { cliente: clienteMes } = req.query as Record<string, string>;
-    if (clienteMes) {
-      baseWhere += ` AND cliente = $${baseParams.length + 1}`;
-      baseParams.push(clienteMes);
-    }
+
+    const baseWhere = allConditions.join(" AND ");
+    const baseParams = allParams;
 
     const [resumenRes, clientesRes, lineaRes] = await Promise.all([
       db.query(`

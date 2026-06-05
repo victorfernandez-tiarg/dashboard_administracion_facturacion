@@ -10,7 +10,7 @@ const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 50 
 
 etlRouter.post(
   "/upload/facturacion",
-  requireAuth as any,
+  requireAdmin as any,
   upload.single("file"),
   async (req: AuthRequest, res: Response) => {
     if (!req.file) { res.status(400).json({ error: "Archivo requerido" }); return; }
@@ -26,7 +26,7 @@ etlRouter.post(
 
 etlRouter.post(
   "/upload/cc",
-  requireAuth as any,
+  requireAdmin as any,
   upload.single("file"),
   async (req: AuthRequest, res: Response) => {
     if (!req.file) { res.status(400).json({ error: "Archivo requerido" }); return; }
@@ -42,7 +42,7 @@ etlRouter.post(
 
 etlRouter.post(
   "/upload/composicion",
-  requireAuth as any,
+  requireAdmin as any,
   upload.single("file"),
   async (req: AuthRequest, res: Response) => {
     if (!req.file) { res.status(400).json({ error: "Archivo requerido" }); return; }
