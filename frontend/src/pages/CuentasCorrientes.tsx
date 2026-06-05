@@ -136,7 +136,7 @@ export default function CuentasCorrientes() {
                 <p className="text-sm font-medium text-ink truncate">{c.cliente}</p>
                 <p className="text-xs text-muted mt-0.5">
                   Saldo: <span className={c.saldo > 0 ? "text-red-500 font-semibold" : "text-green-600"}>
-                    $ {Math.abs(parseFloat(c.saldo)).toLocaleString("es-AR", { maximumFractionDigits: 0 })}
+                    $ {Math.abs(c.saldo).toLocaleString("es-AR", { maximumFractionDigits: 0 })}
                   </span>
                 </p>
               </button>
