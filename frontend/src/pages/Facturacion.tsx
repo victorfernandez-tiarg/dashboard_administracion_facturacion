@@ -245,7 +245,7 @@ export default function Facturacion() {
 
   // Construir datos de gráficos por empresa
   const activeMensual = clienteActivo && clienteData ? clienteData.mensual : mensual;
-  const empresas = Array.from(new Set(activeMensual.map((r: any) => r.empresa))).sort();
+  const empresas = ["TIARG S.A.", "TIARG LLC"];
   const meses = Array.from(new Set(mensual.map((r) => r.mes))).sort();
 
   const chartDataForEmpresa = (empresa: string) =>
