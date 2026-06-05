@@ -1,6 +1,8 @@
 import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
 import { Toaster } from "react-hot-toast";
 import { useAuth } from "./hooks/useAuth";
+import { UploadSlotProvider } from "./hooks/useUploadSlot";
+import { GlobalFiltersProvider } from "./hooks/useGlobalFilters";
 import Login from "./pages/Login";
 import Layout from "./components/Layout";
 import Facturacion from "./pages/Facturacion";
@@ -28,6 +30,8 @@ export default function App() {
           path="/*"
           element={
             <PrivateRoute>
+              <UploadSlotProvider>
+              <GlobalFiltersProvider>
               <Layout user={user} onLogout={logout} isAdmin={isAdmin}>
                 <Routes>
                   <Route path="/" element={<Navigate to="/facturacion" replace />} />
@@ -39,6 +43,8 @@ export default function App() {
                   <Route path="*" element={<Navigate to="/facturacion" replace />} />
                 </Routes>
               </Layout>
+              </GlobalFiltersProvider>
+              </UploadSlotProvider>
             </PrivateRoute>
           }
         />

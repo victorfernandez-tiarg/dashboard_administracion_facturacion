@@ -1,8 +1,14 @@
 import { Request, Response, NextFunction } from "express";
 import jwt from "jsonwebtoken";
 
+export interface Restricciones {
+  cc: string[];       // linea_negocio permitidos (vacío = todos)
+  dv: string[];       // dim_valor permitidos (vacío = todos)
+  clientes: string[]; // clientes permitidos (vacío = todos)
+}
+
 export interface AuthRequest extends Request {
-  user?: { id: number; username: string; role: string };
+  user?: { id: number; username: string; role: string; restricciones: Restricciones };
 }
 
 export function requireAuth(req: AuthRequest, res: Response, next: NextFunction): void {
@@ -14,9 +20,14 @@ export function requireAuth(req: AuthRequest, res: Response, next: NextFunction)
   try {
     const token = header.slice(7);
     const payload = jwt.verify(token, process.env.JWT_SECRET || "secret") as {
-      id: number; username: string; role: string;
+      id: number; username: string; role: string; restricciones?: Restricciones;
     };
-    req.user = payload;
+    req.user = {
+      id: payload.id,
+      username: payload.username,
+      role: payload.role,
+      restricciones: payload.restricciones || { cc: [], dv: [], clientes: [] },
+    };
     next();
   } catch {
     res.status(401).json({ error: "Token inválido" });

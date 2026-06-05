@@ -1,7 +1,8 @@
 import { useState, useEffect } from "react";
 import api from "../api";
 
-interface User { username: string; role: string }
+interface Restricciones { cc: string[]; dv: string[]; clientes: string[] }
+interface User { username: string; role: string; restricciones?: Restricciones }
 
 export function useAuth() {
   const [user, setUser] = useState<User | null>(() => {
@@ -11,8 +12,9 @@ export function useAuth() {
   const login = async (username: string, password: string) => {
     const { data } = await api.post("/auth/login", { username, password });
     localStorage.setItem("token", data.token);
-    localStorage.setItem("user", JSON.stringify({ username: data.username, role: data.role }));
-    setUser({ username: data.username, role: data.role });
+    const userObj = { username: data.username, role: data.role, restricciones: data.restricciones };
+    localStorage.setItem("user", JSON.stringify(userObj));
+    setUser(userObj);
   };
 
   const logout = () => {

@@ -12,7 +12,19 @@ function parseDate(val: unknown): Date | null {
 }
 
 function toNum(val: unknown): number {
-  const n = parseFloat(String(val ?? "0").replace(",", "."));
+  if (val === null || val === undefined || val === "") return 0;
+  // Si SheetJS ya devolvió un número JS, usarlo directo
+  if (typeof val === "number") return isNaN(val) ? 0 : val;
+  // Si es string con formato argentino (1.234,56) → convertir
+  const s = String(val).trim().replace(/[$ ]/g, "");
+  // Detectar si usa coma como decimal: "198,20" o "1.234,56"
+  const hasCommaDecimal = /,\d{1,2}$/.test(s);
+  if (hasCommaDecimal) {
+    const n = parseFloat(s.replace(/\./g, "").replace(",", "."));
+    return isNaN(n) ? 0 : n;
+  }
+  // Formato estándar con punto decimal o sin decimales
+  const n = parseFloat(s.replace(/,/g, ""));
   return isNaN(n) ? 0 : n;
 }
 
@@ -28,6 +40,23 @@ function normalizarNombre(nombre: string): string {
   return nombre.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[^a-z0-9 ]/g, "").trim();
 }
 
+/** Busca en un objeto la primera clave cuyo nombre (en minúsculas) sea IGUAL o contenga alguna de las palabras clave.
+ * Primero prueba coincidencia exacta, luego parcial. */
+function findCol(row: Record<string, unknown>, ...keywords: string[]): string | undefined {
+  const keys = Object.keys(row);
+  // Primero: coincidencia exacta (ignorando mayúsculas/espacios)
+  for (const kw of keywords) {
+    const found = keys.find((k) => k.trim().toLowerCase() === kw.toLowerCase());
+    if (found) return found;
+  }
+  // Luego: coincidencia parcial
+  for (const kw of keywords) {
+    const found = keys.find((k) => k.toLowerCase().includes(kw.toLowerCase()));
+    if (found) return found;
+  }
+  return undefined;
+}
+
 interface ProcessCCOptions { isComposicion?: boolean }
 
 export async function procesarCC(buffer: Buffer, opts: ProcessCCOptions = {}): Promise<{ filas: number }> {
@@ -36,28 +65,37 @@ export async function procesarCC(buffer: Buffer, opts: ProcessCCOptions = {}): P
   const hoy = new Date();
 
   if (opts.isComposicion) {
-    // Procesar archivo de composición de saldos
     return await procesarComposicion(wb, db, hoy);
   }
 
-  // Detectar tipo de archivo: movimientos vs saldos
-  const sheet1 = wb.Sheets[wb.SheetNames[0]];
-  const rows = XLSX.utils.sheet_to_json<Record<string, unknown>>(sheet1);
+  // Leer la primera hoja con datos
+  let rows: Record<string, unknown>[] = [];
+  for (const sheetName of wb.SheetNames) {
+    const r = XLSX.utils.sheet_to_json<Record<string, unknown>>(wb.Sheets[sheetName]);
+    if (r.length > 0) { rows = r; break; }
+  }
 
   if (rows.length === 0) throw new Error("El archivo no contiene datos");
 
   const firstRow = rows[0];
   const keys = Object.keys(firstRow).map((k) => k.toLowerCase());
+
+  // Detectar tipo: movimientos tienen columnas debe/haber
   const hasMovimientos = keys.some((k) => k.includes("debe") || k.includes("haber"));
 
   if (hasMovimientos) {
     return await procesarMovimientos(rows, db);
   } else {
-    return await procesarSaldos(rows, db, hoy);
+    return await procesarSaldos(rows, db, hoy, Object.keys(firstRow));
   }
 }
 
-async function procesarSaldos(rows: Record<string, unknown>[], db: ReturnType<typeof getPool>, hoy: Date): Promise<{ filas: number }> {
+async function procesarSaldos(
+  rows: Record<string, unknown>[],
+  db: ReturnType<typeof getPool>,
+  hoy: Date,
+  columnasEncontradas: string[]
+): Promise<{ filas: number }> {
   await db.query("TRUNCATE TABLE cc_saldos");
 
   const insert = `
@@ -67,18 +105,45 @@ async function procesarSaldos(rows: Record<string, unknown>[], db: ReturnType<ty
 
   let count = 0;
   for (const r of rows) {
-    const cliente = String(r["Cliente"] ?? r["cliente"] ?? "").trim();
+    // Cliente: buscar por variantes comunes de Finnegans
+    const clienteCol = findCol(r, "cliente", "razón social", "razon social", "nombre");
+    const cliente = clienteCol ? String(r[clienteCol] ?? "").trim() : "";
     if (!cliente) continue;
 
-    const saldoActual = toNum(r["Saldo actual"] ?? r["saldo_actual"] ?? r["Saldo"] ?? 0);
-    const fechaVenc = parseDate(r["Fecha vencimiento"] ?? r["fecha_vencimiento"]);
-    const diasVencido = fechaVenc ? Math.max(0, Math.floor((hoy.getTime() - fechaVenc.getTime()) / 86400000)) : 0;
-    const saldoVencido = diasVencido > 0 ? saldoActual : 0;
-    const aging = calcAging(saldoVencido > 0 ? diasVencido : 0);
-    const centro = String(r["Centro de costo"] ?? r["centro_costo"] ?? r["Nivel 1 dimensión"] ?? "").trim();
+    // Saldo actual
+    const saldoCol = findCol(r, "saldo actual", "saldo corriente", "saldo_actual", "saldo");
+    const saldoActual = saldoCol ? toNum(r[saldoCol]) : 0;
+
+    // Saldo vencido explícito (si existe en el archivo)
+    const saldoVencCol = findCol(r, "saldo vencido", "vencido", "deuda vencida");
+    let saldoVencido = saldoVencCol ? toNum(r[saldoVencCol]) : 0;
+
+    // Calcular por fecha si no hay columna explícita
+    let diasVencido = 0;
+    if (!saldoVencCol) {
+      const fechaVencCol = findCol(r, "vencimiento", "fecha venc", "venc");
+      const fechaVenc = fechaVencCol ? parseDate(r[fechaVencCol]) : null;
+      diasVencido = fechaVenc ? Math.max(0, Math.floor((hoy.getTime() - fechaVenc.getTime()) / 86400000)) : 0;
+      saldoVencido = diasVencido > 0 ? saldoActual : 0;
+    } else {
+      // Si hay columna explícita de días vencidos
+      const diasCol = findCol(r, "días vencido", "dias vencido", "días de mora");
+      diasVencido = diasCol ? Math.max(0, toNum(r[diasCol])) : (saldoVencido > 0 ? 1 : 0);
+    }
+
+    const aging = calcAging(saldoVencido > 0 ? (diasVencido || 1) : 0);
+    const centroCol = findCol(r, "centro de costo", "centro_costo", "nivel 1", "linea", "línea");
+    const centro = centroCol ? String(r[centroCol] ?? "").trim() : "";
 
     await db.query(insert, [cliente, saldoActual, saldoVencido, diasVencido, aging, centro]);
     count++;
+  }
+
+  if (count === 0) {
+    throw new Error(
+      `No se encontraron filas válidas. Columnas detectadas en el archivo: [${columnasEncontradas.join(", ")}]. ` +
+      `Se esperan columnas con "cliente" y "saldo".`
+    );
   }
 
   await db.query(
@@ -100,20 +165,73 @@ async function procesarMovimientos(rows: Record<string, unknown>[], db: ReturnTy
 
   let count = 0;
   for (const r of rows) {
-    const cliente = String(r["Cliente"] ?? "").trim();
+    const clienteCol = findCol(r, "cliente", "razón social", "razon social");
+    const cliente = clienteCol ? String(r[clienteCol] ?? "").trim() : "";
     if (!cliente) continue;
+
+    const tipoCol = findCol(r, "tipo", "comprobante");
+    const fechaCol = findCol(r, "fecha emision", "fecha_emision") ??
+      Object.keys(r).find((k) => k.toLowerCase().trim() === "fecha");
+    const fechaVencCol = findCol(r, "vencimiento", "fecha venc", "fecha_vencimiento");
+    const docCol = findCol(r, "número", "nro", "número doc", "documento");
+    const debeCol = findCol(r, "debe");
+    const haberCol = findCol(r, "haber");
+    const saldoCol = findCol(r, "saldo");
+
     await db.query(insert, [
       cliente,
-      String(r["Tipo"] ?? r["tipo"] ?? "").trim(),
-      parseDate(r["Fecha"] ?? r["fecha"]),
-      parseDate(r["Fecha vencimiento"] ?? r["fecha_vencimiento"]),
-      String(r["Documento"] ?? "").trim(),
-      toNum(r["Debe ppal"] ?? r["debe_ppal"] ?? 0),
-      toNum(r["Haber ppal"] ?? r["haber_ppal"] ?? 0),
-      toNum(r["Saldo"] ?? r["saldo"] ?? 0),
+      tipoCol ? String(r[tipoCol] ?? "").trim() : "",
+      fechaCol ? parseDate(r[fechaCol]) : null,
+      fechaVencCol ? parseDate(r[fechaVencCol]) : null,
+      docCol ? String(r[docCol] ?? "").trim() : "",
+      debeCol ? toNum(r[debeCol]) : 0,
+      haberCol ? toNum(r[haberCol]) : 0,
+      saldoCol ? toNum(r[saldoCol]) : 0,
     ]);
     count++;
   }
+
+  if (count === 0) {
+    const cols = Object.keys(rows[0] ?? {});
+    throw new Error(
+      `No se encontraron movimientos válidos. Columnas detectadas: [${cols.join(", ")}]`
+    );
+  }
+
+  await db.query(
+    `INSERT INTO etl_meta (key, value, updated_at) VALUES ('cc_movimientos_ultima_actualizacion', $1, NOW())
+     ON CONFLICT (key) DO UPDATE SET value = $1, updated_at = NOW()`,
+    [JSON.stringify({ filas: count, timestamp: new Date().toISOString() })]
+  );
+
+  // Calcular saldos agregados por cliente y poblar cc_saldos
+  await db.query("TRUNCATE TABLE cc_saldos");
+  await db.query(`
+    INSERT INTO cc_saldos (cliente, saldo_actual, saldo_vencido, dias_vencido, aging, centro_costo_principal)
+    SELECT
+      cliente,
+      GREATEST(SUM(debe_ppal) - SUM(haber_ppal), 0)::numeric AS saldo_actual,
+      SUM(CASE WHEN fecha_vencimiento IS NOT NULL AND fecha_vencimiento < NOW()
+               THEN GREATEST(debe_ppal - haber_ppal, 0) ELSE 0 END)::numeric AS saldo_vencido,
+      COALESCE(MAX(CASE WHEN fecha_vencimiento IS NOT NULL AND fecha_vencimiento < NOW()
+                        THEN EXTRACT(DAY FROM NOW() - fecha_vencimiento) ELSE NULL END), 0)::int AS dias_vencido,
+      CASE
+        WHEN COALESCE(MAX(CASE WHEN fecha_vencimiento IS NOT NULL AND fecha_vencimiento < NOW()
+                               THEN EXTRACT(DAY FROM NOW() - fecha_vencimiento) ELSE NULL END), 0) <= 0 THEN 'Al día'
+        WHEN COALESCE(MAX(CASE WHEN fecha_vencimiento IS NOT NULL AND fecha_vencimiento < NOW()
+                               THEN EXTRACT(DAY FROM NOW() - fecha_vencimiento) ELSE NULL END), 0) <= 30 THEN '1–30 días'
+        WHEN COALESCE(MAX(CASE WHEN fecha_vencimiento IS NOT NULL AND fecha_vencimiento < NOW()
+                               THEN EXTRACT(DAY FROM NOW() - fecha_vencimiento) ELSE NULL END), 0) <= 60 THEN '31–60 días'
+        WHEN COALESCE(MAX(CASE WHEN fecha_vencimiento IS NOT NULL AND fecha_vencimiento < NOW()
+                               THEN EXTRACT(DAY FROM NOW() - fecha_vencimiento) ELSE NULL END), 0) <= 90 THEN '61–90 días'
+        ELSE '+90 días'
+      END AS aging,
+      NULL AS centro_costo_principal
+    FROM cc_movimientos
+    GROUP BY cliente
+    HAVING GREATEST(SUM(debe_ppal) - SUM(haber_ppal), 0) > 0
+  `);
+
   return { filas: count };
 }
 
@@ -121,39 +239,93 @@ async function procesarComposicion(wb: XLSX.WorkBook, db: ReturnType<typeof getP
   await db.query("TRUNCATE TABLE cc_composicion");
   let count = 0;
 
+  // Cuentas que NO son deuda de clientes (diferencia de cambio, bancos, etc.)
+  const CUENTAS_EXCLUIR = ["diferencia", "dif. cbio", "dif cbio", "banco", "caja", "proveedores/deudores dif"];
+
   const insert = `
     INSERT INTO cc_composicion (cliente, cliente_norm, centro_costo, saldo_abierto, venc_comp, documento_ref, dias_vencido_item)
     VALUES ($1,$2,$3,$4,$5,$6,$7)
   `;
 
+  // Acumular todas las filas por cliente para calcular saldo neto
+  const porCliente: Record<string, { rows: any[]; saldoNeto: number }> = {};
+
   for (const sheetName of wb.SheetNames) {
     const rows = XLSX.utils.sheet_to_json<Record<string, unknown>>(wb.Sheets[sheetName]);
+    if (rows.length === 0) continue;
+
+    console.log("Columnas composicion:", Object.keys(rows[0]));
+    if (rows[0]) {
+      const sampleDocCol = Object.keys(rows[0]).find((k) => k.trim().toLowerCase() === "comprobante");
+      console.log("docCol detectado:", sampleDocCol, "→ valor[0]:", rows[0][sampleDocCol ?? ""]);
+    }
+
     for (const r of rows) {
-      const clienteKey = Object.keys(r).find((k) => k.toLowerCase().includes("cliente") || k.toLowerCase().includes("razon"));
-      const saldoKey = Object.keys(r).find((k) => k.toLowerCase().includes("saldo") || k.toLowerCase().includes("pendiente") || k.toLowerCase().includes("importe"));
-      if (!clienteKey || !saldoKey) continue;
+      const clienteCol = findCol(r, "cliente", "razón social", "razon social", "nombre", "cuenta");
+      const saldoCol = findCol(r, "importe", "saldo", "pendiente", "abierto");
+      if (!clienteCol || !saldoCol) continue;
 
-      const cliente = String(r[clienteKey] ?? "").trim();
-      const saldo = toNum(r[saldoKey]);
-      if (!cliente || saldo <= 0) continue;
+      const cliente = String(r[clienteCol] ?? "").trim();
+      if (!cliente) continue;
 
-      const vencKey = Object.keys(r).find((k) => k.toLowerCase().includes("venc"));
-      const venc = vencKey ? parseDate(r[vencKey]) : null;
+      // Excluir filas de cuentas de diferencia de cambio / no-clientes
+      const cuentaCol = findCol(r, "cuenta");
+      const cuenta = cuentaCol ? String(r[cuentaCol] ?? "").toLowerCase() : "";
+      if (CUENTAS_EXCLUIR.some((exc) => cuenta.includes(exc))) continue;
+
+      const saldo = toNum(r[saldoCol]);
+
+      const vencCol = findCol(r, "vencimiento", "venc");
+      const venc = vencCol ? parseDate(r[vencCol]) : null;
       const dias = venc ? Math.max(0, Math.floor((hoy.getTime() - venc.getTime()) / 86400000)) : 0;
-      const centroKey = Object.keys(r).find((k) => k.toLowerCase().includes("centro") || k.toLowerCase().includes("nivel"));
-      const docKey = Object.keys(r).find((k) => k.toLowerCase().includes("doc") || k.toLowerCase().includes("comprobante"));
+      const centroCol = findCol(r, "dimension valor", "dimensión valor", "centro", "nivel 1", "linea", "línea");
 
-      await db.query(insert, [
+      // Buscar columna de número de comprobante (evitar columnas de fecha)
+      const docColExact = Object.keys(r).find((k) => k.trim().toLowerCase() === "comprobante");
+      const docColFallback = findCol(r, "número comprobante", "nro. comprobante", "documento");
+      const docCol = docColExact ?? docColFallback;
+
+      // Guard: si el valor es una fecha JS (SheetJS parseó como Date), descartarlo
+      const rawDoc = docCol ? r[docCol] : undefined;
+      const docStr = (rawDoc instanceof Date || !rawDoc)
+        ? ""
+        : String(rawDoc).trim();
+
+      if (!porCliente[cliente]) porCliente[cliente] = { rows: [], saldoNeto: 0 };
+      porCliente[cliente].saldoNeto += saldo;
+      porCliente[cliente].rows.push({
         cliente,
-        normalizarNombre(cliente),
-        centroKey ? String(r[centroKey] ?? "").trim() : "Sin centro",
         saldo,
         venc,
-        docKey ? String(r[docKey] ?? "").trim() : "",
         dias,
+        centro: centroCol ? String(r[centroCol] ?? "").trim() : "",
+        doc: docStr,
+      });
+    }
+  }
+
+  // Solo insertar clientes con saldo neto > 0 (tienen deuda real)
+  for (const { saldoNeto, rows: clienteRows } of Object.values(porCliente)) {
+    if (saldoNeto <= 0) continue; // cliente saldado, ignorar
+
+    for (const item of clienteRows) {
+      if (item.saldo <= 0) continue; // solo filas positivas (facturas abiertas)
+      await db.query(insert, [
+        item.cliente,
+        normalizarNombre(item.cliente),
+        item.centro || "Sin centro",
+        item.saldo,
+        item.venc,
+        item.doc,
+        item.dias,
       ]);
       count++;
     }
+  }
+
+  if (count === 0) {
+    const allKeys = Object.keys(Object.values(porCliente)[0]?.rows[0] ?? {});
+    throw new Error(`No se encontraron deudas. Clientes procesados: ${Object.keys(porCliente).length}. Filas con saldo neto > 0: 0.`);
   }
 
   await db.query(
@@ -164,3 +336,4 @@ async function procesarComposicion(wb: XLSX.WorkBook, db: ReturnType<typeof getP
 
   return { filas: count };
 }
+

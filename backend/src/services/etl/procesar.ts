@@ -28,6 +28,9 @@ export async function procesarFacturas(buffer: Buffer): Promise<{ filas: number 
 
   if (rows.length === 0) throw new Error("El archivo no contiene datos");
 
+  // Log de columnas para diagnóstico
+  console.log("Columnas Excel facturas:", Object.keys(rows[0]));
+
   const db = getPool();
   await db.query("TRUNCATE TABLE facturas");
 
@@ -35,13 +38,21 @@ export async function procesarFacturas(buffer: Buffer): Promise<{ filas: number 
     INSERT INTO facturas
       (documento, fecha, cliente, empresa, razon_social, moneda_iso, es_nota_credito,
        monto_total_ars, monto_neto_ars, monto_usd, linea_negocio, condicion_pago,
-       producto, importe_pendiente, anio, mes)
-    VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16)
+       producto, importe_pendiente, anio, mes, dim_valor, numero)
+    VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18)
   `;
 
   let count = 0;
+  // Detectar columna número de comprobante por nombre o posición (3ra columna)
+  const colKeys = Object.keys(rows[0]);
+  const NUMERO_KEYS = ["Comprobante", "Número", "Numero", "Nro. comprobante", "N° comprobante", "Nro", "N°", "numero"];
+  const numeroKey = colKeys.find((k) => NUMERO_KEYS.some((n) => k.trim().toLowerCase() === n.toLowerCase()))
+    ?? colKeys[2]; // fallback: 3ra columna
+  console.log("Columna número detectada:", numeroKey);
+
   for (const r of rows) {
     const doc = String(r["Documento"] ?? "").trim();
+    const numero = String(r[numeroKey] ?? "").trim();
     const fecha = parseDate(r["Fecha"]);
     const cliente = String(r["Cliente"] ?? "").trim();
     const empresa = String(r["Empresa"] ?? "").trim();
@@ -68,6 +79,8 @@ export async function procesarFacturas(buffer: Buffer): Promise<{ filas: number 
       toNum(r["Importenetopendiente"]),
       fecha ? fecha.getFullYear() : null,
       fecha ? fecha.getMonth() + 1 : null,
+      String(r["Dim. valor"] ?? r["Dim valor"] ?? r["dim_valor"] ?? "").trim(),
+      numero,
     ]);
     count++;
   }

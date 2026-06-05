@@ -18,6 +18,7 @@ etlRouter.post(
       const result = await procesarFacturas(req.file.buffer);
       res.json({ ok: true, ...result });
     } catch (err: any) {
+      console.error("[ETL facturacion]", err);
       res.status(500).json({ error: err.message });
     }
   }
@@ -33,6 +34,7 @@ etlRouter.post(
       const result = await procesarCC(req.file.buffer);
       res.json({ ok: true, ...result });
     } catch (err: any) {
+      console.error("[ETL cc]", err);
       res.status(500).json({ error: err.message });
     }
   }
@@ -49,6 +51,7 @@ etlRouter.post(
       const result = await procesarCC(req.file.buffer, { isComposicion: true });
       res.json({ ok: true, ...result });
     } catch (err: any) {
+      console.error("[ETL composicion]", err);
       res.status(500).json({ error: err.message });
     }
   }

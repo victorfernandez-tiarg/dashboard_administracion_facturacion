@@ -15,6 +15,18 @@ export function getPool(): Pool {
 
 export async function initDb(): Promise<void> {
   const db = getPool();
+
+  // Verificar que el schema es el nuestro (tiene las columnas correctas)
+  const schemaCheck = await db.query(`
+    SELECT COUNT(*) as cnt FROM information_schema.columns
+    WHERE table_name = 'facturas' AND column_name IN ('es_nota_credito', 'documento', 'monto_total_ars')
+  `);
+  // Si no tiene las 3 columnas del schema Node.js, recrear las tablas de datos
+  if (parseInt(schemaCheck.rows[0].cnt) < 3) {
+    console.log("Recreando tablas con schema actualizado...");
+    await db.query(`DROP TABLE IF EXISTS facturas, cc_saldos, cc_movimientos, cc_composicion CASCADE`);
+  }
+
   await db.query(`
     CREATE TABLE IF NOT EXISTS facturas (
       id SERIAL PRIMARY KEY,
@@ -66,6 +78,11 @@ export async function initDb(): Promise<void> {
 
   // Insertar fila inicial de permisos si no existe
   await db.query(`INSERT INTO permisos (data) SELECT '{"superusers":["admin"],"users":{}}'::jsonb WHERE NOT EXISTS (SELECT 1 FROM permisos)`);
+
+  // Migraciones no destructivas
+  await db.query(`ALTER TABLE facturas ADD COLUMN IF NOT EXISTS dim_valor TEXT`);
+  await db.query(`ALTER TABLE facturas ADD COLUMN IF NOT EXISTS numero TEXT`);
+  await db.query(`ALTER TABLE usuarios ADD COLUMN IF NOT EXISTS restricciones JSONB NOT NULL DEFAULT '{"cc":[],"dv":[],"clientes":[]}'::jsonb`);
 
   console.log("✓ Base de datos inicializada");
 }

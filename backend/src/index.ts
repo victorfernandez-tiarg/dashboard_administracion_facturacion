@@ -31,6 +31,12 @@ app.get("*", (_req, res) => {
   res.sendFile(path.join(frontendDist, "index.html"));
 });
 
+// Error handler global — captura errores de multer y otros middlewares
+app.use((err: any, _req: express.Request, res: express.Response, _next: express.NextFunction) => {
+  console.error("[ERROR GLOBAL]", err);
+  res.status(500).json({ error: err.message || "Error interno" });
+});
+
 (async () => {
   await initDb();
   app.listen(PORT, () => console.log(`Servidor corriendo en puerto ${PORT}`));

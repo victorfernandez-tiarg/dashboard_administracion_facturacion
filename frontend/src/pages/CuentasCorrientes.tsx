@@ -1,48 +1,61 @@
 import { useEffect, useState } from "react";
-import { PieChart, Pie, Cell, Tooltip, ResponsiveContainer, BarChart, Bar, XAxis, YAxis, CartesianGrid } from "recharts";
-import { AlertTriangle, Clock, CheckCircle, TrendingDown } from "lucide-react";
 import toast from "react-hot-toast";
 import api from "../api";
-import KpiCard from "../components/KpiCard";
-import FileDropzone from "../components/FileDropzone";
+import { useRegisterUploader } from "../hooks/useUploadSlot";
+import { useGlobalFilters } from "../hooks/useGlobalFilters";
 
-const fmt = (v: number) => `$ ${v.toLocaleString("es-AR", { maximumFractionDigits: 0 })}`;
+const fmt = (v: number) =>
+  v === 0 ? "-" : `$ ${Math.abs(v).toLocaleString("es-AR", { maximumFractionDigits: 0 })}`;
 
-const AGING_COLORS: Record<string, string> = {
-  "Al día": "#22c55e",
-  "1–30 días": "#84cc16",
-  "31–60 días": "#f59e0b",
-  "61–90 días": "#f97316",
-  "+90 días": "#ef4444",
+const fmtFecha = (s: string | null) => {
+  if (!s) return "-";
+  const d = new Date(s);
+  return isNaN(d.getTime()) ? s : d.toLocaleDateString("es-AR");
 };
 
 export default function CuentasCorrientes() {
-  const [saldos, setSaldos] = useState<any[]>([]);
-  const [agingSummary, setAgingSummary] = useState<any[]>([]);
-  const [kpis, setKpis] = useState<any>(null);
-  const [loading, setLoading] = useState(true);
-  const [uploading, setUploading] = useState(false);
+  const { ccModo, ccSeleccionados, dvModo, dvSeleccionados, clientesModo, clientesSeleccionados } = useGlobalFilters();
+  const [clientes, setClientes] = useState<{ cliente: string; saldo: number }[]>([]);
   const [search, setSearch] = useState("");
+  const [seleccionado, setSeleccionado] = useState<string | null>(null);
+  const [movimientos, setMovimientos] = useState<any[]>([]);
+  const [loadingClientes, setLoadingClientes] = useState(true);
+  const [loadingMov, setLoadingMov] = useState(false);
+  const [uploading, setUploading] = useState(false);
 
-  const fetchData = async () => {
-    setLoading(true);
+  const fetchClientes = async () => {
+    setLoadingClientes(true);
     try {
-      const [s, a, k] = await Promise.all([
-        api.get("/data/cc-saldos"),
-        api.get("/data/aging-summary"),
-        api.get("/data/kpis"),
-      ]);
-      setSaldos(s.data);
-      setAgingSummary(a.data);
-      setKpis(k.data);
+      const params: Record<string, string> = {};
+      if (ccSeleccionados.length > 0)
+        params[ccModo === "excluir" ? "cc_excluir" : "cc_incluir"] = ccSeleccionados.join(",");
+      if (dvSeleccionados.length > 0)
+        params[dvModo === "excluir" ? "dv_excluir" : "dv_incluir"] = dvSeleccionados.join(",");
+      if (clientesSeleccionados.length > 0)
+        params[clientesModo === "excluir" ? "cliente_excluir" : "cliente_incluir"] = clientesSeleccionados.join(",");
+      const { data } = await api.get("/data/cc-movimientos-clientes", { params });
+      setClientes(data);
     } catch {
-      toast.error("Error al cargar datos");
+      toast.error("Error al cargar clientes");
     } finally {
-      setLoading(false);
+      setLoadingClientes(false);
     }
   };
 
-  useEffect(() => { fetchData(); }, []);
+  useEffect(() => { fetchClientes(); }, [ccModo, ccSeleccionados.join(","), dvModo, dvSeleccionados.join(","), clientesModo, clientesSeleccionados.join(",")]);
+
+  const selectCliente = async (cliente: string) => {
+    setSeleccionado(cliente);
+    setLoadingMov(true);
+    try {
+      const { data } = await api.get("/data/cc-movimientos", { params: { cliente } });
+      setMovimientos(data);
+    } catch {
+      toast.error("Error al cargar movimientos");
+    } finally {
+      setLoadingMov(false);
+    }
+  };
 
   const handleUpload = async (file: File) => {
     setUploading(true);
@@ -51,7 +64,9 @@ export default function CuentasCorrientes() {
     try {
       const { data } = await api.post("/etl/upload/cc", form);
       toast.success(`✓ ${data.filas} registros procesados`);
-      fetchData();
+      setSeleccionado(null);
+      setMovimientos([]);
+      fetchClientes();
     } catch (err: any) {
       toast.error(err.response?.data?.error || "Error al procesar archivo");
     } finally {
@@ -59,115 +74,151 @@ export default function CuentasCorrientes() {
     }
   };
 
-  const filtrados = saldos.filter((s) =>
-    !search || s.cliente?.toLowerCase().includes(search.toLowerCase())
+  useRegisterUploader(handleUpload, "cc_clientes.xlsx", uploading);
+
+  const clientesFiltrados = clientes.filter((c) =>
+    !search || c.cliente?.toLowerCase().includes(search.toLowerCase())
   );
 
-  const deudaTotal = saldos.reduce((sum, s) => sum + parseFloat(s.saldo_actual || "0"), 0);
-  const deudaVencida = saldos.reduce((sum, s) => sum + parseFloat(s.saldo_vencido || "0"), 0);
-  const clientesConDeuda = saldos.filter((s) => parseFloat(s.saldo_actual) > 0).length;
+  const saldoSeleccionado = clientes.find((c) => c.cliente === seleccionado)?.saldo ?? 0;
 
   return (
-    <div className="space-y-6">
-      <div className="flex items-center justify-between">
-        <h1 className="text-2xl font-bold text-ink">Cuenta Corriente</h1>
-        <div className="w-64">
-          <FileDropzone onFile={handleUpload} label="cc_clientes.xlsx" loading={uploading} />
+    <div className="flex gap-4 h-[calc(100vh-6rem)]">
+      {/* Panel izquierdo: lista de clientes */}
+      <div className="w-72 shrink-0 bg-white border border-border rounded-2xl shadow-sm flex flex-col overflow-hidden">
+        <div className="p-4 border-b border-border">
+          <div className="flex items-center justify-between mb-3">
+            <h1 className="text-base font-bold text-ink">Cuenta Corriente</h1>
+            {!loadingClientes && clientes.length > 0 && (
+              <span className="text-[11px] font-medium text-muted bg-surface rounded-full px-2 py-0.5">
+                {clientesFiltrados.length}{search ? `/${clientes.length}` : ""}
+              </span>
+            )}
+          </div>
+          <input
+            className="w-full border border-border rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-brand/40"
+            placeholder="Buscar cliente..."
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+          />
+        </div>
+        <div className="flex-1 overflow-y-auto">
+          {loadingClientes ? (
+            <div className="p-3 space-y-2">
+              {[...Array(6)].map((_, i) => (
+                <div key={i} className="animate-pulse">
+                  <div className="h-3.5 bg-surface rounded w-3/4 mb-1.5" />
+                  <div className="h-2.5 bg-surface rounded w-1/2" />
+                </div>
+              ))}
+            </div>
+          ) : clientes.length === 0 ? (
+            <div className="flex flex-col items-center justify-center h-full p-6 text-center gap-2">
+              <div className="w-10 h-10 rounded-full bg-surface flex items-center justify-center mb-1">
+                <svg className="w-5 h-5 text-muted" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" /></svg>
+              </div>
+              <p className="text-xs font-medium text-ink">Sin datos de CC</p>
+              <p className="text-[11px] text-muted">Subí el Excel de cuenta corriente usando el área de carga en el sidebar</p>
+            </div>
+          ) : clientesFiltrados.length === 0 ? (
+            <p className="text-xs text-muted p-4">Sin resultados para &ldquo;{search}&rdquo;</p>
+          ) : (
+            clientesFiltrados.map((c) => (
+              <button
+                key={c.cliente}
+                onClick={() => selectCliente(c.cliente)}
+                className={`w-full text-left px-4 py-2.5 border-b border-surface transition-colors ${
+                  seleccionado === c.cliente
+                    ? "bg-brand/10 border-l-[3px] border-l-brand"
+                    : "hover:bg-surface"
+                }`}
+              >
+                <p className="text-sm font-medium text-ink truncate">{c.cliente}</p>
+                <p className="text-xs text-muted mt-0.5">
+                  Saldo: <span className={c.saldo > 0 ? "text-red-500 font-semibold" : "text-green-600"}>
+                    $ {Math.abs(parseFloat(c.saldo)).toLocaleString("es-AR", { maximumFractionDigits: 0 })}
+                  </span>
+                </p>
+              </button>
+            ))
+          )}
         </div>
       </div>
 
-      {loading ? (
-        <div className="text-muted text-sm animate-pulse">Cargando datos...</div>
-      ) : (
-        <>
-          <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-            <KpiCard label="Deuda total" value={fmt(deudaTotal)} icon={<TrendingDown size={16} />} />
-            <KpiCard label="Deuda vencida" value={fmt(deudaVencida)} color="red" icon={<AlertTriangle size={16} />} />
-            <KpiCard label="Clientes con deuda" value={String(clientesConDeuda)} icon={<Clock size={16} />} />
-            <KpiCard label="DSO (días)" value={String(kpis?.dso ?? "-")} sub="días de ventas pendientes" color={kpis?.dso > 60 ? "red" : "default"} icon={<CheckCircle size={16} />} />
-          </div>
-
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-            {/* Aging donut */}
-            {agingSummary.length > 0 && (
-              <div className="bg-white border border-border rounded-2xl p-5 shadow-sm">
-                <h2 className="text-sm font-semibold text-muted uppercase tracking-wide mb-4">Aging de deuda</h2>
-                <ResponsiveContainer width="100%" height={220}>
-                  <PieChart>
-                    <Pie data={agingSummary} dataKey="total" nameKey="aging" cx="50%" cy="50%" outerRadius={90} label={({ aging, percent }) => `${aging} ${(percent * 100).toFixed(0)}%`} labelLine={false}>
-                      {agingSummary.map((entry) => (
-                        <Cell key={entry.aging} fill={AGING_COLORS[entry.aging] || "#94a3b8"} />
-                      ))}
-                    </Pie>
-                    <Tooltip formatter={(v: number) => fmt(v)} />
-                  </PieChart>
-                </ResponsiveContainer>
-              </div>
-            )}
-
-            {/* Aging bar */}
-            {agingSummary.length > 0 && (
-              <div className="bg-white border border-border rounded-2xl p-5 shadow-sm">
-                <h2 className="text-sm font-semibold text-muted uppercase tracking-wide mb-4">Deuda por bucket</h2>
-                <ResponsiveContainer width="100%" height={220}>
-                  <BarChart data={agingSummary} layout="vertical">
-                    <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" />
-                    <XAxis type="number" tickFormatter={(v) => `$${(v / 1e6).toFixed(1)}M`} tick={{ fontSize: 10, fill: "#64748b" }} />
-                    <YAxis type="category" dataKey="aging" tick={{ fontSize: 11, fill: "#64748b" }} width={80} />
-                    <Tooltip formatter={(v: number) => fmt(v)} />
-                    <Bar dataKey="total" radius={[0, 4, 4, 0]}>
-                      {agingSummary.map((entry) => (
-                        <Cell key={entry.aging} fill={AGING_COLORS[entry.aging] || "#94a3b8"} />
-                      ))}
-                    </Bar>
-                  </BarChart>
-                </ResponsiveContainer>
-              </div>
-            )}
-          </div>
-
-          {/* Tabla saldos */}
-          <div className="bg-white border border-border rounded-2xl p-5 shadow-sm">
-            <div className="flex items-center justify-between mb-4">
-              <h2 className="text-sm font-semibold text-muted uppercase tracking-wide">Deudores</h2>
-              <input
-                className="border border-border rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-brand/40 w-48"
-                placeholder="Buscar cliente..."
-                value={search}
-                onChange={(e) => setSearch(e.target.value)}
-              />
+      {/* Panel derecho: movimientos */}
+      <div className="flex-1 bg-white border border-border rounded-2xl shadow-sm flex flex-col overflow-hidden">
+        {!seleccionado ? (
+          <div className="flex flex-col items-center justify-center h-full text-center gap-3 p-8">
+            <div className="w-14 h-14 rounded-full bg-surface flex items-center justify-center">
+              <svg className="w-7 h-7 text-muted/50" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" /></svg>
             </div>
-            <div className="overflow-x-auto">
-              <table className="w-full text-sm">
-                <thead>
-                  <tr className="text-left text-xs font-semibold text-muted border-b border-border">
-                    <th className="pb-2 pr-4">Cliente</th>
-                    <th className="pb-2 pr-4 text-right">Saldo actual</th>
-                    <th className="pb-2 pr-4 text-right">Saldo vencido</th>
-                    <th className="pb-2 pr-4 text-right">Días vencido</th>
-                    <th className="pb-2">Aging</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-surface">
-                  {filtrados.slice(0, 100).map((s, i) => (
-                    <tr key={i} className="hover:bg-surface/80">
-                      <td className="py-2 pr-4 font-medium text-ink">{s.cliente}</td>
-                      <td className="py-2 pr-4 text-right">{fmt(parseFloat(s.saldo_actual))}</td>
-                      <td className="py-2 pr-4 text-right text-red-600">{parseFloat(s.saldo_vencido) > 0 ? fmt(parseFloat(s.saldo_vencido)) : "-"}</td>
-                      <td className="py-2 pr-4 text-right text-muted">{s.dias_vencido || 0}</td>
-                      <td className="py-2">
-                        <span className="text-xs px-2 py-0.5 rounded-full font-medium" style={{ background: AGING_COLORS[s.aging] + "22", color: AGING_COLORS[s.aging] }}>
-                          {s.aging}
-                        </span>
-                      </td>
-                    </tr>
+            <div>
+              <p className="text-sm font-semibold text-ink mb-1">Seleccioná un cliente</p>
+              <p className="text-xs text-muted max-w-xs">Hacé clic en un nombre de la lista para ver todos sus movimientos y el saldo histórico</p>
+            </div>
+          </div>
+        ) : (
+          <>
+            <div className="px-5 py-4 border-b border-border flex items-center justify-between">
+              <div>
+                <h2 className="text-base font-bold text-ink">{seleccionado}</h2>
+                <p className="text-xs text-muted mt-0.5">
+                  Saldo neto:{" "}
+                  <span className={saldoSeleccionado > 0 ? "text-red-500 font-semibold" : "text-green-600 font-semibold"}>
+                    $ {Math.abs(saldoSeleccionado).toLocaleString("es-AR", { maximumFractionDigits: 0 })}
+                    {saldoSeleccionado > 0 ? " (a favor empresa)" : " (a favor cliente)"}
+                  </span>
+                </p>
+              </div>
+            </div>
+            <div className="flex-1 overflow-auto">
+              {loadingMov ? (
+                <div className="p-5 space-y-3">
+                  {[...Array(5)].map((_, i) => (
+                    <div key={i} className="flex gap-4 animate-pulse">
+                      <div className="h-3 bg-surface rounded w-20" />
+                      <div className="h-3 bg-surface rounded w-28" />
+                      <div className="h-3 bg-surface rounded w-16" />
+                      <div className="h-3 bg-surface rounded w-16 ml-auto" />
+                    </div>
                   ))}
-                </tbody>
-              </table>
+                </div>
+              ) : movimientos.length === 0 ? (
+                <p className="text-xs text-muted p-5">Sin movimientos encontrados</p>
+              ) : (
+                <table className="w-full text-sm">
+                  <thead className="sticky top-0 bg-surface border-b border-border">
+                    <tr className="text-left text-xs font-semibold text-muted">
+                      <th className="px-4 py-2.5">Fecha</th>
+                      <th className="px-4 py-2.5">Comprobante</th>
+                      <th className="px-4 py-2.5">Documento</th>
+                      <th className="px-4 py-2.5">Vencimiento</th>
+                      <th className="px-4 py-2.5 text-right">Debe</th>
+                      <th className="px-4 py-2.5 text-right">Haber</th>
+                      <th className="px-4 py-2.5 text-right">Saldo</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-surface">
+                    {movimientos.map((m, i) => (
+                      <tr key={i} className="hover:bg-surface/60">
+                        <td className="px-4 py-2 text-muted">{fmtFecha(m.fecha)}</td>
+                        <td className="px-4 py-2 text-ink">{m.tipo || "-"}</td>
+                        <td className="px-4 py-2 text-muted">{m.documento || "-"}</td>
+                        <td className="px-4 py-2 text-muted">{fmtFecha(m.fecha_vencimiento)}</td>
+                        <td className="px-4 py-2 text-right text-ink">{parseFloat(m.debe_ppal) > 0 ? fmt(parseFloat(m.debe_ppal)) : "-"}</td>
+                        <td className="px-4 py-2 text-right text-green-600">{parseFloat(m.haber_ppal) > 0 ? fmt(parseFloat(m.haber_ppal)) : "-"}</td>
+                        <td className={`px-4 py-2 text-right font-medium ${parseFloat(m.saldo) > 0 ? "text-red-500" : "text-green-600"}`}>
+                          {fmt(parseFloat(m.saldo || "0"))}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              )}
             </div>
-          </div>
-        </>
-      )}
+          </>
+        )}
+      </div>
     </div>
   );
 }

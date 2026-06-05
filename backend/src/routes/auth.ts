@@ -24,12 +24,13 @@ authRouter.post("/login", async (req: Request, res: Response) => {
       res.status(401).json({ error: "Usuario o contraseña incorrectos" });
       return;
     }
+    const restricciones = user.restricciones || { cc: [], dv: [], clientes: [] };
     const token = jwt.sign(
-      { id: user.id, username: user.username, role: user.role },
+      { id: user.id, username: user.username, role: user.role, restricciones },
       process.env.JWT_SECRET || "secret",
       { expiresIn: "12h" }
     );
-    res.json({ token, username: user.username, role: user.role });
+    res.json({ token, username: user.username, role: user.role, restricciones });
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: "Error interno" });
