@@ -83,9 +83,9 @@ export default function CuentasCorrientes() {
   const saldoSeleccionado = clientes.find((c) => c.cliente === seleccionado)?.saldo ?? 0;
 
   return (
-    <div className="flex gap-4 h-[calc(100vh-6rem)]">
+    <div className="flex flex-col lg:flex-row gap-4 lg:h-[calc(100vh-8rem)]">
       {/* Panel izquierdo: lista de clientes */}
-      <div className="w-72 shrink-0 bg-white border border-border rounded-2xl shadow-sm flex flex-col overflow-hidden">
+      <div className={`lg:w-72 shrink-0 bg-white border border-border rounded-2xl shadow-sm flex flex-col overflow-hidden ${seleccionado ? "hidden lg:flex" : "flex"}`} style={{ maxHeight: seleccionado ? undefined : "50vh" }}>
         <div className="p-4 border-b border-border">
           <div className="flex items-center justify-between mb-3">
             <h1 className="text-base font-bold text-ink">Cuenta Corriente</h1>
@@ -146,7 +146,7 @@ export default function CuentasCorrientes() {
       </div>
 
       {/* Panel derecho: movimientos */}
-      <div className="flex-1 bg-white border border-border rounded-2xl shadow-sm flex flex-col overflow-hidden">
+      <div className={`flex-1 bg-white border border-border rounded-2xl shadow-sm flex flex-col overflow-hidden ${seleccionado ? "flex" : "hidden lg:flex"}`}>
         {!seleccionado ? (
           <div className="flex flex-col items-center justify-center h-full text-center gap-3 p-8">
             <div className="w-14 h-14 rounded-full bg-surface flex items-center justify-center">
@@ -159,7 +159,14 @@ export default function CuentasCorrientes() {
           </div>
         ) : (
           <>
-            <div className="px-5 py-4 border-b border-border flex items-center justify-between">
+            <div className="px-4 py-3 border-b border-border flex items-center gap-3">
+              {/* Botón volver en mobile */}
+              <button
+                onClick={() => setSeleccionado(null)}
+                className="lg:hidden text-muted hover:text-ink p-1 -ml-1"
+              >
+                <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" /></svg>
+              </button>
               <div>
                 <h2 className="text-base font-bold text-ink">{seleccionado}</h2>
                 <p className="text-xs text-muted mt-0.5">
@@ -189,25 +196,25 @@ export default function CuentasCorrientes() {
                 <table className="w-full text-sm">
                   <thead className="sticky top-0 bg-surface border-b border-border">
                     <tr className="text-left text-xs font-semibold text-muted">
-                      <th className="px-4 py-2.5">Fecha</th>
-                      <th className="px-4 py-2.5">Comprobante</th>
-                      <th className="px-4 py-2.5">Documento</th>
-                      <th className="px-4 py-2.5">Vencimiento</th>
-                      <th className="px-4 py-2.5 text-right">Debe</th>
-                      <th className="px-4 py-2.5 text-right">Haber</th>
-                      <th className="px-4 py-2.5 text-right">Saldo</th>
+                      <th className="px-3 py-2.5">Fecha</th>
+                      <th className="px-3 py-2.5">Comprobante</th>
+                      <th className="hidden md:table-cell px-3 py-2.5">Documento</th>
+                      <th className="hidden md:table-cell px-3 py-2.5">Vencimiento</th>
+                      <th className="px-3 py-2.5 text-right">Debe</th>
+                      <th className="px-3 py-2.5 text-right">Haber</th>
+                      <th className="px-3 py-2.5 text-right">Saldo</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-surface">
                     {movimientos.map((m, i) => (
                       <tr key={i} className="hover:bg-surface/60">
-                        <td className="px-4 py-2 text-muted">{fmtFecha(m.fecha)}</td>
-                        <td className="px-4 py-2 text-ink">{m.tipo || "-"}</td>
-                        <td className="px-4 py-2 text-muted">{m.documento || "-"}</td>
-                        <td className="px-4 py-2 text-muted">{fmtFecha(m.fecha_vencimiento)}</td>
-                        <td className="px-4 py-2 text-right text-ink">{parseFloat(m.debe_ppal) > 0 ? fmt(parseFloat(m.debe_ppal)) : "-"}</td>
-                        <td className="px-4 py-2 text-right text-green-600">{parseFloat(m.haber_ppal) > 0 ? fmt(parseFloat(m.haber_ppal)) : "-"}</td>
-                        <td className={`px-4 py-2 text-right font-medium ${parseFloat(m.saldo) > 0 ? "text-red-500" : "text-green-600"}`}>
+                        <td className="px-3 py-2 text-muted text-xs">{fmtFecha(m.fecha)}</td>
+                        <td className="px-3 py-2 text-ink text-xs">{m.tipo || "-"}</td>
+                        <td className="hidden md:table-cell px-3 py-2 text-muted text-xs">{m.documento || "-"}</td>
+                        <td className="hidden md:table-cell px-3 py-2 text-muted text-xs">{fmtFecha(m.fecha_vencimiento)}</td>
+                        <td className="px-3 py-2 text-right text-ink text-xs">{parseFloat(m.debe_ppal) > 0 ? fmt(parseFloat(m.debe_ppal)) : "-"}</td>
+                        <td className="px-3 py-2 text-right text-green-600 text-xs">{parseFloat(m.haber_ppal) > 0 ? fmt(parseFloat(m.haber_ppal)) : "-"}</td>
+                        <td className={`px-3 py-2 text-right font-medium text-xs ${parseFloat(m.saldo) > 0 ? "text-red-500" : "text-green-600"}`}>
                           {fmt(parseFloat(m.saldo || "0"))}
                         </td>
                       </tr>

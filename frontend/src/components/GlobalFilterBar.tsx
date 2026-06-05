@@ -63,10 +63,9 @@ export default function GlobalFilterBar() {
   const toggleTodosCl = () => setClientesSeleccionados(clTodos ? [] : [...clientes]);
 
   return (
-    <div className="border-b border-border bg-white px-6 py-2.5">
-      <div className="flex flex-wrap gap-3 items-end">
-        {/* Desde */}
-        <div>
+    <div className="border-b border-border bg-white px-4 lg:px-6 py-2.5 shrink-0">
+      <div className="flex gap-3 items-end overflow-x-auto lg:overflow-visible pb-0.5 scrollbar-none">
+        <div className="shrink-0">
           <label className="block text-[10px] font-semibold text-muted uppercase tracking-wide mb-1">Desde</label>
           <input
             type="month"
@@ -76,7 +75,7 @@ export default function GlobalFilterBar() {
           />
         </div>
         {/* Hasta */}
-        <div>
+        <div className="shrink-0">
           <label className="block text-[10px] font-semibold text-muted uppercase tracking-wide mb-1">Hasta</label>
           <input
             type="month"
@@ -87,7 +86,7 @@ export default function GlobalFilterBar() {
         </div>
 
         {/* Nivel 1 */}
-        <div className="relative" ref={ccRef}>
+        <div className="relative shrink-0" ref={ccRef}>
           <label className="block text-[10px] font-semibold text-muted uppercase tracking-wide mb-1">Nivel 1</label>
           <button
             type="button"
@@ -138,7 +137,7 @@ export default function GlobalFilterBar() {
         </div>
 
         {/* Centro de costo (dim_valor) */}
-        <div className="relative" ref={dvRef}>
+        <div className="relative shrink-0" ref={dvRef}>
           <label className="block text-[10px] font-semibold text-muted uppercase tracking-wide mb-1">Centro de costo</label>
           <button
             type="button"
@@ -189,7 +188,7 @@ export default function GlobalFilterBar() {
         </div>
 
         {/* Clientes */}
-        <div className="relative" ref={clRef}>
+        <div className="relative shrink-0" ref={clRef}>
           <label className="block text-[10px] font-semibold text-muted uppercase tracking-wide mb-1">Cliente</label>
           <button
             type="button"

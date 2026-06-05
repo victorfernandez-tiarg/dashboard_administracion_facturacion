@@ -471,14 +471,14 @@ export default function Facturacion() {
             </div>
           )}
 
-          {/* Mix de centros de costo mes a mes */}
+          {/* Composición por Nivel 1 mes a mes */}
           {!mixCCLoading && mixChartData.length > 0 && allLineas.length > 0 && (
             <div className="bg-white border border-border rounded-2xl p-5 shadow-sm">
               <div className="flex items-start justify-between mb-1">
                 <div>
-                  <h2 className="text-sm font-bold text-ink">Composición por centro de costo</h2>
+                  <h2 className="text-sm font-bold text-ink">Composición por Nivel 1</h2>
                   <p className="text-xs text-muted mt-0.5">
-                    Participación porcentual de cada centro en el total facturado mensual (ARS)
+                    Participación porcentual de cada Nivel 1 en el total facturado mensual (ARS)
                   </p>
                 </div>
               </div>
@@ -681,7 +681,6 @@ export default function Facturacion() {
                     { label: "Facturado ARS", value: fmt(parseFloat(detalle.resumen.facturado_ars || "0")), accent: false },
                     { label: "Facturado USD", value: fmtUSD(parseFloat(detalle.resumen.facturado_usd || "0")), accent: false },
                     { label: "Notas de crédito", value: fmt(parseFloat(detalle.resumen.nc_ars || "0")), accent: "amber" },
-                    { label: "Importe pendiente", value: fmtShort(parseFloat(detalle.resumen.pendiente || "0")), accent: parseFloat(detalle.resumen.pendiente || "0") > 0 ? "red" : false },
                     { label: "Clientes activos", value: detalle.resumen.clientes_activos, accent: false },
                     { label: "Cant. facturas", value: detalle.resumen.cantidad_facturas, accent: false },
                   ].map((s) => (
@@ -696,7 +695,7 @@ export default function Facturacion() {
 
                 {detalle.por_linea.length > 0 && (
                   <div>
-                    <h4 className="text-xs font-semibold text-muted uppercase tracking-wide mb-3">Mix por centro de costo</h4>
+                    <h4 className="text-xs font-semibold text-muted uppercase tracking-wide mb-3">Mix por Nivel 1</h4>
                     <div className="space-y-3">
                       {(() => {
                         const totalLinea = detalle.por_linea.reduce((s, l) => s + parseFloat(l.ars || "0"), 0);
@@ -725,7 +724,6 @@ export default function Facturacion() {
                     <h4 className="text-xs font-semibold text-muted uppercase tracking-wide mb-3">Top clientes del mes</h4>
                     <div className="space-y-0.5">
                       {detalle.top_clientes.map((c, i) => {
-                        const pendiente = parseFloat(c.pendiente || "0");
                         const totalClientes = detalle.top_clientes.reduce((s, x) => s + parseFloat(x.ars || "0"), 0);
                         const pct = totalClientes > 0 ? (parseFloat(c.ars || "0") / totalClientes) * 100 : 0;
                         return (
@@ -733,7 +731,6 @@ export default function Facturacion() {
                             <span className="text-xs text-muted/60 w-4 text-right font-mono">{i + 1}</span>
                             <div className="flex-1 min-w-0">
                               <p className="text-xs font-medium text-ink truncate">{c.cliente}</p>
-                              {pendiente > 0 && <p className="text-xs text-amber-500">Pendiente: {fmtShort(pendiente)}</p>}
                             </div>
                             <div className="text-right shrink-0">
                               <p className="text-xs font-bold text-ink">{fmtShort(parseFloat(c.ars || "0"))}</p>
@@ -870,10 +867,10 @@ export default function Facturacion() {
                   );
                 })()}
 
-                {/* Mix centro de costo */}
+                {/* Mix Nivel 1 */}
                 {clienteData.por_linea.length > 0 && (
                   <div>
-                    <h4 className="text-xs font-semibold text-muted uppercase tracking-wide mb-3">Mix por centro de costo</h4>
+                    <h4 className="text-xs font-semibold text-muted uppercase tracking-wide mb-3">Mix por Nivel 1</h4>
                     <div className="space-y-2.5">
                       {(() => {
                         const total = clienteData.por_linea.reduce((s, l) => s + parseFloat(l.ars || "0"), 0);
