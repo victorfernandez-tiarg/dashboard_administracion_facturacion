@@ -50,7 +50,7 @@ export async function initDb(): Promise<void> {
     CREATE TABLE IF NOT EXISTS cc_composicion (
       id SERIAL PRIMARY KEY,
       cliente TEXT, cliente_norm TEXT, centro_costo TEXT,
-      saldo_abierto NUMERIC, venc_comp DATE,
+      saldo_abierto NUMERIC, fecha_emision_comp DATE, venc_comp DATE,
       documento_ref TEXT, dias_vencido_item INT
     );
     CREATE TABLE IF NOT EXISTS permisos (
@@ -83,6 +83,7 @@ export async function initDb(): Promise<void> {
   await db.query(`ALTER TABLE facturas ADD COLUMN IF NOT EXISTS dim_valor TEXT`);
   await db.query(`ALTER TABLE facturas ADD COLUMN IF NOT EXISTS numero TEXT`);
   await db.query(`ALTER TABLE usuarios ADD COLUMN IF NOT EXISTS restricciones JSONB NOT NULL DEFAULT '{"cc":[],"dv":[],"clientes":[]}'::jsonb`);
+  await db.query(`ALTER TABLE cc_composicion ADD COLUMN IF NOT EXISTS fecha_emision_comp DATE`);
 
   console.log("✓ Base de datos inicializada");
 }

@@ -261,8 +261,8 @@ async function procesarComposicion(wb: XLSX.WorkBook, db: ReturnType<typeof getP
   const CUENTAS_EXCLUIR = ["diferencia", "dif. cbio", "dif cbio", "banco", "caja", "proveedores/deudores dif"];
 
   const insert = `
-    INSERT INTO cc_composicion (cliente, cliente_norm, centro_costo, saldo_abierto, venc_comp, documento_ref, dias_vencido_item)
-    VALUES ($1,$2,$3,$4,$5,$6,$7)
+    INSERT INTO cc_composicion (cliente, cliente_norm, centro_costo, saldo_abierto, fecha_emision_comp, venc_comp, documento_ref, dias_vencido_item)
+    VALUES ($1,$2,$3,$4,$5,$6,$7,$8)
   `;
 
   // Acumular todas las filas por cliente para calcular saldo neto
@@ -295,6 +295,8 @@ async function procesarComposicion(wb: XLSX.WorkBook, db: ReturnType<typeof getP
 
       const vencCol = findCol(r, "vencimiento", "venc");
       const venc = vencCol ? parseDate(r[vencCol]) : null;
+      const emisionCol = findCol(r, "fecha emision", "fecha emisión", "fecha_emision", "emision");
+      const fechaEmision = emisionCol ? parseDate(r[emisionCol]) : null;
       const dias = venc ? Math.max(0, Math.floor((hoy.getTime() - venc.getTime()) / 86400000)) : 0;
       const centroCol = findCol(r, "dimension valor", "dimensión valor", "centro", "nivel 1", "linea", "línea");
 
@@ -314,6 +316,7 @@ async function procesarComposicion(wb: XLSX.WorkBook, db: ReturnType<typeof getP
       porCliente[cliente].rows.push({
         cliente,
         saldo,
+        fechaEmision,
         venc,
         dias,
         centro: centroCol ? String(r[centroCol] ?? "").trim() : "",
@@ -333,6 +336,7 @@ async function procesarComposicion(wb: XLSX.WorkBook, db: ReturnType<typeof getP
         normalizarNombre(item.cliente),
         item.centro || "Sin centro",
         item.saldo,
+        item.fechaEmision,
         item.venc,
         item.doc,
         item.dias,

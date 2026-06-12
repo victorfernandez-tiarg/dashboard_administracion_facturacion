@@ -650,10 +650,7 @@ export default function Facturacion() {
                 <div className="grid grid-cols-2 gap-2.5">
                   {[
                     { label: "Facturado ARS", value: fmt(parseFloat(detalle.resumen.facturado_ars || "0")), accent: false },
-                    { label: "Facturado USD", value: fmtUSD(parseFloat(detalle.resumen.facturado_usd || "0")), accent: false },
-                    { label: "Notas de crédito", value: fmt(parseFloat(detalle.resumen.nc_ars || "0")), accent: "amber" },
-                    { label: "Clientes activos", value: detalle.resumen.clientes_activos, accent: false },
-                    { label: "Cant. facturas", value: detalle.resumen.cantidad_facturas, accent: false },
+                    { label: "Equivalente en USD", value: fmtUSD(parseFloat(detalle.resumen.facturado_usd || "0")), accent: false },
                   ].map((s) => (
                     <div key={s.label} className="bg-surface rounded-xl p-3">
                       <p className="text-xs text-muted mb-1">{s.label}</p>

@@ -258,7 +258,7 @@ export default function Composicion() {
                                 <thead>
                                   <tr className="text-left text-[10px] font-semibold text-muted border-b border-border">
                                     <th className="px-8 py-1.5">Documento</th>
-                                    <th className="px-4 py-1.5">Centro de costo</th>
+                                    <th className="px-4 py-1.5">Fecha emisión</th>
                                     <th className="px-4 py-1.5 text-right">Saldo abierto</th>
                                     <th className="px-4 py-1.5">Vencimiento</th>
                                     <th className="px-4 py-1.5 text-right">Días vencido</th>
@@ -272,7 +272,7 @@ export default function Composicion() {
                                       return (
                                         <tr key={i} className="hover:bg-white/60">
                                           <td className="px-8 py-1.5 text-ink">{cp.documento_ref || "-"}</td>
-                                          <td className="px-4 py-1.5 text-muted">{cp.centro_costo || "-"}</td>
+                                          <td className="px-4 py-1.5 text-muted">{fmtFecha(cp.fecha_emision_comp)}</td>
                                           <td className="px-4 py-1.5 text-right font-medium text-ink">{fmt(parseFloat(cp.saldo_abierto || "0"))}</td>
                                           <td className="px-4 py-1.5 text-muted">{fmtFecha(cp.venc_comp)}</td>
                                           <td className="px-4 py-1.5 text-right">
