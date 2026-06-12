@@ -82,7 +82,18 @@ export async function initDb(): Promise<void> {
   // Migraciones no destructivas
   await db.query(`ALTER TABLE facturas ADD COLUMN IF NOT EXISTS dim_valor TEXT`);
   await db.query(`ALTER TABLE facturas ADD COLUMN IF NOT EXISTS numero TEXT`);
-  await db.query(`ALTER TABLE usuarios ADD COLUMN IF NOT EXISTS restricciones JSONB NOT NULL DEFAULT '{"cc":[],"dv":[],"clientes":[]}'::jsonb`);
+  await db.query(`ALTER TABLE usuarios ADD COLUMN IF NOT EXISTS restricciones JSONB NOT NULL DEFAULT '{"cc":[],"dv":[],"clientes":[],"empresas":[]}'::jsonb`);
+  await db.query(`ALTER TABLE usuarios ALTER COLUMN restricciones SET DEFAULT '{"cc":[],"dv":[],"clientes":[],"empresas":[]}'::jsonb`);
+  await db.query(`
+    UPDATE usuarios
+    SET restricciones = jsonb_set(
+      COALESCE(restricciones, '{}'::jsonb),
+      '{empresas}',
+      COALESCE(restricciones->'empresas', '[]'::jsonb),
+      true
+    )
+    WHERE restricciones IS NULL OR NOT (restricciones ? 'empresas')
+  `);
   await db.query(`ALTER TABLE cc_composicion ADD COLUMN IF NOT EXISTS fecha_emision_comp DATE`);
 
   console.log("✓ Base de datos inicializada");

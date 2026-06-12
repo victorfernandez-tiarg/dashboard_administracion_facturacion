@@ -3,7 +3,7 @@ import { RefreshCw, Plus, Trash2, Key, Shield, X, Check } from "lucide-react";
 import toast from "react-hot-toast";
 import api from "../api";
 
-interface Restricciones { cc: string[]; dv: string[]; clientes: string[] }
+interface Restricciones { cc: string[]; dv: string[]; clientes: string[]; empresas: string[] }
 
 export default function Admin() {
   const [usuarios, setUsuarios] = useState<any[]>([]);
@@ -15,10 +15,11 @@ export default function Admin() {
 
   // Restricciones
   const [editingRestr, setEditingRestr] = useState<number | null>(null);
-  const [restr, setRestr] = useState<Restricciones>({ cc: [], dv: [], clientes: [] });
+  const [restr, setRestr] = useState<Restricciones>({ cc: [], dv: [], clientes: [], empresas: [] });
   const [opcionesCc, setOpcionesCc] = useState<string[]>([]);
   const [opcionesDv, setOpcionesDv] = useState<string[]>([]);
   const [opcionesClientes, setOpcionesClientes] = useState<string[]>([]);
+  const [opcionesEmpresas, setOpcionesEmpresas] = useState<string[]>([]);
   const [savingRestr, setSavingRestr] = useState(false);
 
   const fetchUsuarios = async () => {
@@ -76,16 +77,23 @@ export default function Admin() {
 
   const openRestr = async (u: any) => {
     setEditingRestr(u.id);
-    setRestr(u.restricciones || { cc: [], dv: [], clientes: [] });
+    setRestr({
+      cc: Array.isArray(u.restricciones?.cc) ? u.restricciones.cc : [],
+      dv: Array.isArray(u.restricciones?.dv) ? u.restricciones.dv : [],
+      clientes: Array.isArray(u.restricciones?.clientes) ? u.restricciones.clientes : [],
+      empresas: Array.isArray(u.restricciones?.empresas) ? u.restricciones.empresas : [],
+    });
     try {
-      const [rCc, rDv, rCl] = await Promise.all([
+      const [rCc, rDv, rCl, rEmp] = await Promise.all([
         api.get("/data/centros-costo"),
         api.get("/data/dim-valores"),
         api.get("/data/clientes"),
+        api.get("/data/empresas"),
       ]);
       setOpcionesCc(rCc.data);
       setOpcionesDv(rDv.data);
       setOpcionesClientes(rCl.data);
+      setOpcionesEmpresas(rEmp.data);
     } catch {
       toast.error("Error al cargar opciones");
     }
@@ -179,8 +187,13 @@ export default function Admin() {
             </thead>
             <tbody className="divide-y divide-surface">
               {usuarios.map((u) => {
-                const r: Restricciones = u.restricciones || { cc: [], dv: [], clientes: [] };
-                const sinRestr = r.cc.length === 0 && r.dv.length === 0 && r.clientes.length === 0;
+                const r: Restricciones = {
+                  cc: Array.isArray(u.restricciones?.cc) ? u.restricciones.cc : [],
+                  dv: Array.isArray(u.restricciones?.dv) ? u.restricciones.dv : [],
+                  clientes: Array.isArray(u.restricciones?.clientes) ? u.restricciones.clientes : [],
+                  empresas: Array.isArray(u.restricciones?.empresas) ? u.restricciones.empresas : [],
+                };
+                const sinRestr = r.cc.length === 0 && r.dv.length === 0 && r.clientes.length === 0 && r.empresas.length === 0;
                 return (
                 <tr key={u.id}>
                   <td className="py-2 pr-4 font-medium">{u.username}</td>
@@ -194,6 +207,7 @@ export default function Admin() {
                       <div className="flex flex-wrap gap-1">
                         {r.cc.map((v) => <span key={v} className="text-[10px] bg-brand/10 text-brand px-1.5 py-0.5 rounded">N1: {v}</span>)}
                         {r.dv.map((v) => <span key={v} className="text-[10px] bg-purple-100 text-purple-700 px-1.5 py-0.5 rounded">CC: {v}</span>)}
+                        {r.empresas.map((v) => <span key={v} className="text-[10px] bg-emerald-100 text-emerald-700 px-1.5 py-0.5 rounded">Emp: {v}</span>)}
                         {r.clientes.slice(0, 3).map((v) => <span key={v} className="text-[10px] bg-surface text-muted px-1.5 py-0.5 rounded border border-border truncate max-w-[100px]">{v}</span>)}
                         {r.clientes.length > 3 && <span className="text-[10px] text-muted">+{r.clientes.length - 3}</span>}
                       </div>
@@ -283,9 +297,24 @@ export default function Admin() {
                   </div>
                 )}
               </div>
+              {/* Empresas */}
+              <div>
+                <label className="block text-xs font-semibold text-muted uppercase tracking-wide mb-2">
+                  Empresas permitidas {restr.empresas.length > 0 && <span className="normal-case text-brand">({restr.empresas.length} seleccionadas)</span>}
+                </label>
+                {opcionesEmpresas.length === 0 ? <p className="text-xs text-muted">Sin datos cargados</p> : (
+                  <div className="flex flex-wrap gap-2">
+                    {opcionesEmpresas.map((v) => (
+                      <button key={v} type="button" onClick={() => toggleRestrItem("empresas", v)}
+                        className={`text-xs px-3 py-1 rounded-full border transition-colors ${restr.empresas.includes(v) ? "bg-emerald-600 text-white border-emerald-600" : "border-border text-ink hover:border-emerald-300"}`}
+                      >{v}</button>
+                    ))}
+                  </div>
+                )}
+              </div>
             </div>
             <div className="px-6 py-4 border-t border-border flex items-center justify-between gap-3">
-              <button type="button" onClick={() => setRestr({ cc: [], dv: [], clientes: [] })} className="text-xs text-muted hover:text-brand border border-border px-3 py-1.5 rounded-lg">
+              <button type="button" onClick={() => setRestr({ cc: [], dv: [], clientes: [], empresas: [] })} className="text-xs text-muted hover:text-brand border border-border px-3 py-1.5 rounded-lg">
                 Limpiar todo (acceso total)
               </button>
               <div className="flex gap-2">

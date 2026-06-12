@@ -20,7 +20,12 @@ adminRouter.post("/usuarios", async (req: AuthRequest, res: Response) => {
   try {
     const db = getPool();
     const hash = await bcrypt.hash(password, 12);
-    const restr = restricciones || { cc: [], dv: [], clientes: [] };
+    const restr = {
+      cc: Array.isArray(restricciones?.cc) ? restricciones.cc : [],
+      dv: Array.isArray(restricciones?.dv) ? restricciones.dv : [],
+      clientes: Array.isArray(restricciones?.clientes) ? restricciones.clientes : [],
+      empresas: Array.isArray(restricciones?.empresas) ? restricciones.empresas : [],
+    };
     const { rows } = await db.query(
       "INSERT INTO usuarios (username, password_hash, role, restricciones) VALUES ($1, $2, $3, $4) RETURNING id, username, role, restricciones",
       [username.trim(), hash, role || "user", JSON.stringify(restr)]
@@ -34,10 +39,16 @@ adminRouter.post("/usuarios", async (req: AuthRequest, res: Response) => {
 
 // Actualizar restricciones
 adminRouter.put("/usuarios/:id/restricciones", async (req: AuthRequest, res: Response) => {
-  const { restricciones } = req.body as { restricciones: { cc: string[]; dv: string[]; clientes: string[] } };
+  const { restricciones } = req.body as { restricciones: { cc: string[]; dv: string[]; clientes: string[]; empresas: string[] } };
   if (!restricciones) { res.status(400).json({ error: "restricciones requeridas" }); return; }
+  const restr = {
+    cc: Array.isArray(restricciones.cc) ? restricciones.cc : [],
+    dv: Array.isArray(restricciones.dv) ? restricciones.dv : [],
+    clientes: Array.isArray(restricciones.clientes) ? restricciones.clientes : [],
+    empresas: Array.isArray(restricciones.empresas) ? restricciones.empresas : [],
+  };
   const db = getPool();
-  await db.query("UPDATE usuarios SET restricciones = $1 WHERE id = $2", [JSON.stringify(restricciones), req.params.id]);
+  await db.query("UPDATE usuarios SET restricciones = $1 WHERE id = $2", [JSON.stringify(restr), req.params.id]);
   res.json({ ok: true });
 });
 

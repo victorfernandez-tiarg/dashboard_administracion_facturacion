@@ -5,10 +5,22 @@ export interface Restricciones {
   cc: string[];       // linea_negocio permitidos (vacío = todos)
   dv: string[];       // dim_valor permitidos (vacío = todos)
   clientes: string[]; // clientes permitidos (vacío = todos)
+  empresas: string[]; // empresas permitidas (vacío = todas)
 }
 
 export interface AuthRequest extends Request {
   user?: { id: number; username: string; role: string; restricciones: Restricciones };
+}
+
+const defaultRestricciones = (): Restricciones => ({ cc: [], dv: [], clientes: [], empresas: [] });
+
+function normalizeRestricciones(r?: Partial<Restricciones> | null): Restricciones {
+  return {
+    cc: Array.isArray(r?.cc) ? r!.cc : [],
+    dv: Array.isArray(r?.dv) ? r!.dv : [],
+    clientes: Array.isArray(r?.clientes) ? r!.clientes : [],
+    empresas: Array.isArray(r?.empresas) ? r!.empresas : [],
+  };
 }
 
 export function requireAuth(req: AuthRequest, res: Response, next: NextFunction): void {
@@ -26,7 +38,7 @@ export function requireAuth(req: AuthRequest, res: Response, next: NextFunction)
       id: payload.id,
       username: payload.username,
       role: payload.role,
-      restricciones: payload.restricciones || { cc: [], dv: [], clientes: [] },
+      restricciones: normalizeRestricciones(payload.restricciones || defaultRestricciones()),
     };
     next();
   } catch {

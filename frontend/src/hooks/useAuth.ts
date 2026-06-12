@@ -1,7 +1,7 @@
 import { useState, useEffect } from "react";
 import api from "../api";
 
-interface Restricciones { cc: string[]; dv: string[]; clientes: string[] }
+interface Restricciones { cc: string[]; dv: string[]; clientes: string[]; empresas: string[] }
 interface User { username: string; role: string; restricciones?: Restricciones }
 
 export function useAuth() {

@@ -5,10 +5,13 @@ import { getPool } from "../db";
 export const dataRouter = Router();
 dataRouter.use(requireAuth as any);
 
+const EMPRESA_CANON_SQL = `CASE WHEN empresa ILIKE '%LLC%' THEN 'TIARG LLC' ELSE 'TIARG S.A.' END`;
+
 dataRouter.get("/facturas", async (req: AuthRequest, res: Response) => {
   try {
     const db = getPool();
-    const { rows } = await db.query("SELECT * FROM facturas ORDER BY fecha DESC");
+    const { where, params } = buildFacturasWhere(req.query as any, [], req.user?.restricciones);
+    const { rows } = await db.query(`SELECT * FROM facturas ${where} ORDER BY fecha DESC`, params);
     res.json(rows);
   } catch (err) {
     console.error(err);
@@ -16,10 +19,18 @@ dataRouter.get("/facturas", async (req: AuthRequest, res: Response) => {
   }
 });
 
-dataRouter.get("/cc-saldos", async (_req: AuthRequest, res: Response) => {
+dataRouter.get("/cc-saldos", async (req: AuthRequest, res: Response) => {
   try {
     const db = getPool();
-    const { rows } = await db.query("SELECT * FROM cc_saldos ORDER BY saldo_actual DESC");
+    const r = req.user!.restricciones;
+    const conditions: string[] = [];
+    const params: any[] = [];
+    if (r.cc.length) { params.push(r.cc); conditions.push(`cliente IN (SELECT DISTINCT cliente FROM facturas WHERE linea_negocio = ANY($${params.length}))`) }
+    if (r.dv.length) { params.push(r.dv); conditions.push(`cliente IN (SELECT DISTINCT cliente FROM facturas WHERE dim_valor = ANY($${params.length}))`) }
+    if (r.empresas.length) { params.push(r.empresas); conditions.push(`cliente IN (SELECT DISTINCT cliente FROM facturas WHERE ${EMPRESA_CANON_SQL} = ANY($${params.length}::text[]))`) }
+    if (r.clientes.length) { params.push(r.clientes); conditions.push(`cliente = ANY($${params.length}::text[])`) }
+    const where = conditions.length > 0 ? `WHERE ${conditions.join(" AND ")}` : "";
+    const { rows } = await db.query(`SELECT * FROM cc_saldos ${where} ORDER BY saldo_actual DESC`, params);
     res.json(rows);
   } catch (err) {
     res.status(500).json({ error: "Error al obtener saldos" });
@@ -37,6 +48,7 @@ dataRouter.get("/cc-movimientos-clientes", async (req: AuthRequest, res: Respons
     // Restricciones del usuario (siempre se aplican)
     if (r.cc.length) { params.push(r.cc); conditions.push(`cliente IN (SELECT DISTINCT cliente FROM facturas WHERE linea_negocio = ANY($${params.length}))`) }
     if (r.dv.length) { params.push(r.dv); conditions.push(`cliente IN (SELECT DISTINCT cliente FROM facturas WHERE dim_valor = ANY($${params.length}))`) }
+    if (r.empresas.length) { params.push(r.empresas); conditions.push(`cliente IN (SELECT DISTINCT cliente FROM facturas WHERE ${EMPRESA_CANON_SQL} = ANY($${params.length}::text[]))`) }
     if (r.clientes.length) { params.push(r.clientes); conditions.push(`cliente = ANY($${params.length}::text[])`) }
 
     if (cc_incluir) {
@@ -81,12 +93,20 @@ dataRouter.get("/cc-movimientos", async (req: AuthRequest, res: Response) => {
   const { cliente } = req.query;
   try {
     const db = getPool();
-    let query = "SELECT * FROM cc_movimientos ORDER BY fecha DESC";
-    const params: string[] = [];
+    const r = req.user!.restricciones;
+    let query = "SELECT * FROM cc_movimientos";
+    const params: any[] = [];
+    const conditions: string[] = [];
+    if (r.cc.length) { params.push(r.cc); conditions.push(`cliente IN (SELECT DISTINCT cliente FROM facturas WHERE linea_negocio = ANY($${params.length}))`) }
+    if (r.dv.length) { params.push(r.dv); conditions.push(`cliente IN (SELECT DISTINCT cliente FROM facturas WHERE dim_valor = ANY($${params.length}))`) }
+    if (r.empresas.length) { params.push(r.empresas); conditions.push(`cliente IN (SELECT DISTINCT cliente FROM facturas WHERE ${EMPRESA_CANON_SQL} = ANY($${params.length}::text[]))`) }
+    if (r.clientes.length) { params.push(r.clientes); conditions.push(`cliente = ANY($${params.length}::text[])`) }
     if (cliente) {
-      query = "SELECT * FROM cc_movimientos WHERE cliente = $1 ORDER BY fecha DESC";
       params.push(cliente as string);
+      conditions.push(`cliente = $${params.length}`);
     }
+    if (conditions.length > 0) query += ` WHERE ${conditions.join(" AND ")}`;
+    query += " ORDER BY fecha DESC";
     const { rows } = await db.query(query, params);
     res.json(rows);
   } catch (err) {
@@ -105,6 +125,7 @@ dataRouter.get("/cc-composicion", async (req: AuthRequest, res: Response) => {
     // Restricciones del usuario (siempre se aplican)
     if (r.cc.length) { params.push(r.cc); conditions.push(`cliente IN (SELECT DISTINCT cliente FROM facturas WHERE linea_negocio = ANY($${params.length}))`) }
     if (r.dv.length) { params.push(r.dv); conditions.push(`cliente IN (SELECT DISTINCT cliente FROM facturas WHERE dim_valor = ANY($${params.length}))`) }
+    if (r.empresas.length) { params.push(r.empresas); conditions.push(`cliente IN (SELECT DISTINCT cliente FROM facturas WHERE ${EMPRESA_CANON_SQL} = ANY($${params.length}::text[]))`) }
     if (r.clientes.length) { params.push(r.clientes); conditions.push(`cliente = ANY($${params.length}::text[])`) }
 
     if (cc_incluir) {
@@ -152,6 +173,7 @@ dataRouter.get("/dim-valores", async (req: AuthRequest, res: Response) => {
     if (r.dv.length > 0) { conditions.push(`dim_valor = ANY($1::text[])`); params.push(r.dv); }
     if (r.clientes.length > 0) { conditions.push(`cliente = ANY($${params.length + 1}::text[])`); params.push(r.clientes); }
     if (r.cc.length > 0) { conditions.push(`linea_negocio = ANY($${params.length + 1}::text[])`); params.push(r.cc); }
+    if (r.empresas.length > 0) { conditions.push(`${EMPRESA_CANON_SQL} = ANY($${params.length + 1}::text[])`); params.push(r.empresas); }
     const { rows } = await db.query(`SELECT DISTINCT dim_valor FROM facturas WHERE ${conditions.join(" AND ")} ORDER BY dim_valor`, params);
     res.json(rows.map((row: any) => row.dim_valor));
   } catch (err) {
@@ -168,6 +190,7 @@ dataRouter.get("/centros-costo", async (req: AuthRequest, res: Response) => {
     if (r.cc.length > 0) { conditions.push(`linea_negocio = ANY($1::text[])`); params.push(r.cc); }
     if (r.clientes.length > 0) { conditions.push(`cliente = ANY($${params.length + 1}::text[])`); params.push(r.clientes); }
     if (r.dv.length > 0) { conditions.push(`dim_valor = ANY($${params.length + 1}::text[])`); params.push(r.dv); }
+    if (r.empresas.length > 0) { conditions.push(`${EMPRESA_CANON_SQL} = ANY($${params.length + 1}::text[])`); params.push(r.empresas); }
     const { rows } = await db.query(`SELECT DISTINCT linea_negocio FROM facturas WHERE ${conditions.join(" AND ")} ORDER BY linea_negocio`, params);
     res.json(rows.map((row: any) => row.linea_negocio));
   } catch (err) {
@@ -184,10 +207,36 @@ dataRouter.get("/clientes", async (req: AuthRequest, res: Response) => {
     if (r.clientes.length > 0) { conditions.push(`cliente = ANY($1::text[])`); params.push(r.clientes); }
     if (r.cc.length > 0) { conditions.push(`linea_negocio = ANY($${params.length + 1}::text[])`); params.push(r.cc); }
     if (r.dv.length > 0) { conditions.push(`dim_valor = ANY($${params.length + 1}::text[])`); params.push(r.dv); }
+    if (r.empresas.length > 0) { conditions.push(`${EMPRESA_CANON_SQL} = ANY($${params.length + 1}::text[])`); params.push(r.empresas); }
     const { rows } = await db.query(`SELECT DISTINCT cliente FROM facturas WHERE ${conditions.join(" AND ")} ORDER BY cliente`, params);
     res.json(rows.map((row: any) => row.cliente));
   } catch (err) {
     res.status(500).json({ error: "Error al obtener clientes" });
+  }
+});
+
+dataRouter.get("/empresas", async (req: AuthRequest, res: Response) => {
+  try {
+    const db = getPool();
+    const r = req.user!.restricciones;
+    const conditions = ["empresa IS NOT NULL", "empresa != ''"];
+    const params: any[] = [];
+    if (r.clientes.length > 0) { conditions.push(`cliente = ANY($${params.length + 1}::text[])`); params.push(r.clientes); }
+    if (r.cc.length > 0) { conditions.push(`linea_negocio = ANY($${params.length + 1}::text[])`); params.push(r.cc); }
+    if (r.dv.length > 0) { conditions.push(`dim_valor = ANY($${params.length + 1}::text[])`); params.push(r.dv); }
+    if (r.empresas.length > 0) { conditions.push(`${EMPRESA_CANON_SQL} = ANY($${params.length + 1}::text[])`); params.push(r.empresas); }
+    const { rows } = await db.query(
+      `
+        SELECT DISTINCT ${EMPRESA_CANON_SQL} as empresa
+        FROM facturas
+        WHERE ${conditions.join(" AND ")}
+        ORDER BY 1
+      `,
+      params
+    );
+    res.json(rows.map((row: any) => row.empresa));
+  } catch (err) {
+    res.status(500).json({ error: "Error al obtener empresas" });
   }
 });
 
@@ -204,6 +253,7 @@ function buildFacturasWhere(
   const r = restricciones;
   if (r?.cc.length) { conditions.push(`linea_negocio = ANY($${i++}::text[])`); params.push(r.cc); }
   if (r?.dv.length) { conditions.push(`dim_valor = ANY($${i++}::text[])`); params.push(r.dv); }
+  if (r?.empresas.length) { conditions.push(`${EMPRESA_CANON_SQL} = ANY($${i++}::text[])`); params.push(r.empresas); }
   if (r?.clientes.length) { conditions.push(`cliente = ANY($${i++}::text[])`); params.push(r.clientes); }
 
   if (query.fecha_desde) {
@@ -432,6 +482,7 @@ dataRouter.get("/facturacion-cliente", async (req: AuthRequest, res: Response) =
   try {
     const db = getPool();
     const { cliente, fecha_desde, fecha_hasta, cc_incluir, cc_excluir, dv_incluir, dv_excluir } = req.query as Record<string, string>;
+    const r = req.user?.restricciones;
     if (!cliente) return res.status(400).json({ error: "Parámetro requerido: cliente" });
 
     const params: any[] = [cliente];
@@ -453,6 +504,10 @@ dataRouter.get("/facturacion-cliente", async (req: AuthRequest, res: Response) =
       const list = dv_excluir.split(",").map((s) => s.trim()).filter(Boolean);
       if (list.length) { where += ` AND (dim_valor IS NULL OR dim_valor != ALL($${i++}::text[]))`; params.push(list); }
     }
+    if (r?.cc.length) { where += ` AND linea_negocio = ANY($${i++}::text[])`; params.push(r.cc); }
+    if (r?.dv.length) { where += ` AND dim_valor = ANY($${i++}::text[])`; params.push(r.dv); }
+    if (r?.empresas.length) { where += ` AND ${EMPRESA_CANON_SQL} = ANY($${i++}::text[])`; params.push(r.empresas); }
+    if (r?.clientes.length) { where += ` AND cliente = ANY($${i++}::text[])`; params.push(r.clientes); }
 
     const [resumenRes, mensualRes, lineaRes, facturasRes] = await Promise.all([
       db.query(`
@@ -543,16 +598,23 @@ dataRouter.get("/facturacion-por-cliente", async (req: AuthRequest, res: Respons
   }
 });
 
-dataRouter.get("/aging-summary", async (_req: AuthRequest, res: Response) => {
+dataRouter.get("/aging-summary", async (req: AuthRequest, res: Response) => {
   try {
     const db = getPool();
+    const r = req.user!.restricciones;
+    const conditions = ["saldo_actual > 0"];
+    const params: any[] = [];
+    if (r.cc.length) { params.push(r.cc); conditions.push(`cliente IN (SELECT DISTINCT cliente FROM facturas WHERE linea_negocio = ANY($${params.length}))`) }
+    if (r.dv.length) { params.push(r.dv); conditions.push(`cliente IN (SELECT DISTINCT cliente FROM facturas WHERE dim_valor = ANY($${params.length}))`) }
+    if (r.empresas.length) { params.push(r.empresas); conditions.push(`cliente IN (SELECT DISTINCT cliente FROM facturas WHERE ${EMPRESA_CANON_SQL} = ANY($${params.length}::text[]))`) }
+    if (r.clientes.length) { params.push(r.clientes); conditions.push(`cliente = ANY($${params.length}::text[])`) }
     const { rows } = await db.query(`
       SELECT aging, COUNT(*) as clientes, SUM(saldo_actual) as total
       FROM cc_saldos
-      WHERE saldo_actual > 0
+      WHERE ${conditions.join(" AND ")}
       GROUP BY aging
       ORDER BY aging
-    `);
+    `, params);
     res.json(rows);
   } catch (err) {
     res.status(500).json({ error: "Error al obtener aging" });
