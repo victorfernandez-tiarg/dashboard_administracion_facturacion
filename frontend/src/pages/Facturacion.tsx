@@ -649,12 +649,12 @@ export default function Facturacion() {
               <div className="space-y-6">
                 <div className="grid grid-cols-2 gap-2.5">
                   {[
-                    { label: "Facturado ARS", value: fmt(parseFloat(detalle.resumen.facturado_ars || "0")), accent: false },
-                    { label: "Equivalente en USD", value: fmtUSD(parseFloat(detalle.resumen.facturado_usd || "0")), accent: false },
+                    { label: "Facturado ARS", value: fmt(parseFloat(detalle.resumen.facturado_ars || "0")) },
+                    { label: "Equivalente en USD", value: fmtUSD(parseFloat(detalle.resumen.facturado_usd || "0")) },
                   ].map((s) => (
                     <div key={s.label} className="bg-surface rounded-xl p-3">
                       <p className="text-xs text-muted mb-1">{s.label}</p>
-                      <p className={`text-sm font-bold ${ s.accent === "amber" ? "text-amber-600" : s.accent === "red" ? "text-red-500" : "text-ink" }`}>
+                      <p className="text-sm font-bold text-ink">
                         {s.value}
                       </p>
                     </div>

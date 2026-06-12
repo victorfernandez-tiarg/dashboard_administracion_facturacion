@@ -11,6 +11,14 @@ import { initDb } from "./db";
 const app = express();
 const PORT = process.env.PORT || 3001;
 
+process.on("unhandledRejection", (reason) => {
+  console.error("[UNHANDLED_REJECTION]", reason);
+});
+
+process.on("uncaughtException", (error) => {
+  console.error("[UNCAUGHT_EXCEPTION]", error);
+});
+
 app.use(cors({ origin: process.env.FRONTEND_URL || "*", credentials: true }));
 app.use(express.json({ limit: "50mb" }));
 app.use(express.urlencoded({ extended: true }));
@@ -37,7 +45,12 @@ app.use((err: any, _req: express.Request, res: express.Response, _next: express.
   res.status(500).json({ error: err.message || "Error interno" });
 });
 
-(async () => {
+async function start() {
   await initDb();
   app.listen(PORT, () => console.log(`Servidor corriendo en puerto ${PORT}`));
-})();
+}
+
+start().catch((err) => {
+  console.error("[STARTUP_ERROR] Fallo al iniciar el backend", err);
+  process.exit(1);
+});
