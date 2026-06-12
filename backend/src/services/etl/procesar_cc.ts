@@ -304,8 +304,27 @@ async function procesarComposicion(wb: XLSX.WorkBook, db: ReturnType<typeof getP
 
       const saldo = toNum(r[saldoCol]);
 
-      const vencCol = findCol(r, "vencimiento", "venc");
-      const venc = vencCol ? parseDate(r[vencCol]) : null;
+      const vencCol = findCol(
+        r,
+        "vencimiento",
+        "fecha vencimiento",
+        "fecha de vencimiento",
+        "fecha_vencimiento",
+        "fecha venc",
+        "vto",
+        "vto.",
+        "venc"
+      );
+      const diasCol = findCol(r, "dias vencido", "días vencido", "dias de mora", "mora");
+      const diasArchivo = diasCol ? Math.max(0, toNum(r[diasCol])) : 0;
+
+      let venc = vencCol ? parseDate(r[vencCol]) : null;
+      if (!venc && diasArchivo > 0) {
+        // Fallback: si el archivo trae solo días vencidos, derivar fecha estimada de vencimiento.
+        const base = new Date(Date.UTC(hoy.getUTCFullYear(), hoy.getUTCMonth(), hoy.getUTCDate(), 12, 0, 0));
+        base.setUTCDate(base.getUTCDate() - diasArchivo);
+        venc = base;
+      }
       const emisionCol = findCol(
         r,
         "fecha emision",
@@ -318,7 +337,9 @@ async function procesarComposicion(wb: XLSX.WorkBook, db: ReturnType<typeof getP
         "emision"
       );
       const fechaEmision = emisionCol ? parseDate(r[emisionCol]) : null;
-      const dias = venc ? Math.max(0, Math.floor((hoy.getTime() - venc.getTime()) / 86400000)) : 0;
+      const dias = venc
+        ? Math.max(0, Math.floor((hoy.getTime() - venc.getTime()) / 86400000))
+        : diasArchivo;
       const centroCol = findCol(r, "dimension valor", "dimensión valor", "centro", "nivel 1", "linea", "línea");
 
       // Buscar columna de número de comprobante (evitar columnas de fecha)
