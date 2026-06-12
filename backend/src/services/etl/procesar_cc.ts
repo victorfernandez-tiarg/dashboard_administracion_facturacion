@@ -60,17 +60,28 @@ function normalizarNombre(nombre: string): string {
 
 /** Busca en un objeto la primera clave cuyo nombre (en minúsculas) sea IGUAL o contenga alguna de las palabras clave.
  * Primero prueba coincidencia exacta, luego parcial. */
+function normColName(v: string): string {
+  return v
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/[^a-z0-9]+/g, " ")
+    .trim();
+}
+
 function findCol(row: Record<string, unknown>, ...keywords: string[]): string | undefined {
   const keys = Object.keys(row);
+  const normKeys = keys.map((k) => ({ raw: k, norm: normColName(k) }));
+  const normKeywords = keywords.map((kw) => normColName(kw));
   // Primero: coincidencia exacta (ignorando mayúsculas/espacios)
-  for (const kw of keywords) {
-    const found = keys.find((k) => k.trim().toLowerCase() === kw.toLowerCase());
-    if (found) return found;
+  for (const kw of normKeywords) {
+    const found = normKeys.find((k) => k.norm === kw);
+    if (found) return found.raw;
   }
   // Luego: coincidencia parcial
-  for (const kw of keywords) {
-    const found = keys.find((k) => k.toLowerCase().includes(kw.toLowerCase()));
-    if (found) return found;
+  for (const kw of normKeywords) {
+    const found = normKeys.find((k) => k.norm.includes(kw));
+    if (found) return found.raw;
   }
   return undefined;
 }
@@ -295,7 +306,17 @@ async function procesarComposicion(wb: XLSX.WorkBook, db: ReturnType<typeof getP
 
       const vencCol = findCol(r, "vencimiento", "venc");
       const venc = vencCol ? parseDate(r[vencCol]) : null;
-      const emisionCol = findCol(r, "fecha emision", "fecha emisión", "fecha_emision", "emision");
+      const emisionCol = findCol(
+        r,
+        "fecha emision",
+        "fecha de emision",
+        "fecha emisión",
+        "fecha de emisión",
+        "fecha_emision",
+        "fecha comprobante",
+        "fch emision",
+        "emision"
+      );
       const fechaEmision = emisionCol ? parseDate(r[emisionCol]) : null;
       const dias = venc ? Math.max(0, Math.floor((hoy.getTime() - venc.getTime()) / 86400000)) : 0;
       const centroCol = findCol(r, "dimension valor", "dimensión valor", "centro", "nivel 1", "linea", "línea");
