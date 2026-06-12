@@ -3,10 +3,9 @@ import {
   BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer,
   CartesianGrid, Cell, Legend,
 } from "recharts";
-import { DollarSign, TrendingUp, FileText, X } from "lucide-react";
+import { X } from "lucide-react";
 import toast from "react-hot-toast";
 import api from "../api";
-import KpiCard from "../components/KpiCard";
 import FileDropzone from "../components/FileDropzone";
 import { useRegisterUploader } from "../hooks/useUploadSlot";
 import { useGlobalFilters } from "../hooks/useGlobalFilters";
@@ -117,7 +116,6 @@ export default function Facturacion() {
     buildParams, reloadOptions,
   } = useGlobalFilters();
 
-  const [kpis, setKpis] = useState<any>(null);
   const [mensual, setMensual] = useState<any[]>([]);
   const [porCliente, setPorCliente] = useState<any[]>([]);
   const [mixCC, setMixCC] = useState<any[]>([]);
@@ -140,13 +138,11 @@ export default function Facturacion() {
     setMixCCLoading(true);
     const params = buildParams();
     try {
-      const [k, m, c, mx] = await Promise.all([
-        api.get("/data/kpis", { params }),
+      const [m, c, mx] = await Promise.all([
         api.get("/data/facturacion-mensual", { params }),
         api.get("/data/facturacion-por-cliente", { params }),
         api.get("/data/facturacion-mix-cc", { params }),
       ]);
-      setKpis(k.data);
       setMensual(m.data);
       setPorCliente(c.data);
       setMixCC(mx.data);
@@ -272,11 +268,6 @@ export default function Facturacion() {
   const esInternacional = (empresa: string) =>
     empresa.toLowerCase().includes("llc");
 
-  const ncRatio =
-    kpis && kpis.total_facturado > 0
-      ? ((kpis.total_nc / kpis.total_facturado) * 100).toFixed(1)
-      : null;
-
   // ── Mix CC: pivotar para gráfico de barras apiladas 100% ──────────────────
   const allLineas = Array.from(new Set(mixCC.map((r) => r.linea_negocio))).sort(
     (a, b) => {
@@ -314,14 +305,6 @@ export default function Facturacion() {
 
       {loading ? (
         <div className="space-y-4">
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-            {[...Array(3)].map((_, i) => (
-              <div key={i} className="bg-white border border-border rounded-2xl p-4 animate-pulse">
-                <div className="h-2.5 bg-surface rounded w-1/3 mb-3" />
-                <div className="h-7 bg-surface rounded w-2/3" />
-              </div>
-            ))}
-          </div>
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
             {[...Array(2)].map((_, i) => (
               <div key={i} className="bg-white border border-border rounded-2xl p-5 animate-pulse">
@@ -333,27 +316,6 @@ export default function Facturacion() {
         </div>
       ) : (
         <>
-          {/* KPIs */}
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-            <KpiCard
-              label="Facturado ARS"
-              value={kpis ? fmt(kpis.total_facturado) : "-"}
-              icon={<DollarSign size={16} />}
-            />
-            <KpiCard
-              label="Facturado USD"
-              value={kpis ? fmtUSD(kpis.total_usd) : "-"}
-              icon={<TrendingUp size={16} />}
-            />
-            <KpiCard
-              label="Notas de crédito"
-              value={kpis ? fmt(kpis.total_nc) : "-"}
-              sub={ncRatio ? `${ncRatio}% del facturado bruto` : undefined}
-              color="amber"
-              icon={<FileText size={16} />}
-            />
-          </div>
-
           {/* Badge cliente activo */}
           {clienteActivo && (
             <div className="flex items-center gap-3">
